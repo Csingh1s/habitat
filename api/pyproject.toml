@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "habitat-image-analysis-api"
+version = "0.1.0"
+description = "Secure evidence-ingestion API for home-inspection image analysis."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "clamd>=1.0,<2",
+  "fastapi>=0.115,<1",
+  "PyJWT[crypto]>=2.10,<3",
+  "pydantic-settings>=2.6,<3",
+  "reportlab>=4.4,<5",
+  "uvicorn[standard]>=0.32,<1",
+]
+
+[project.scripts]
+habitat-analysis-worker = "habitat_api.worker:main"
+
+[project.optional-dependencies]
+test = [
+  "httpx>=0.28,<1",
+  "pytest>=8,<9",
+  "pypdf>=6,<7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/habitat_api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,308 @@
+HORIZON FULL-REPLACEMENT BLUEPRINT
+Mobile inspection capture + web operations + AI-assisted reports
+Generated: 2026-10-01
+
+1. What was observed
+--------------------
+Read-only inventory covered:
+- Home dashboard: search, inspector/status filters, result totals, work-order rows, View
+  Work Order, Write Report, and View Log actions.
+- Schedule: Day, Month, Map, and Week views.
+- Report Writing workspace: draft editing, items, templates, completion checks, photo
+  loading, preview, publishing, work-order navigation, item/section visibility, mobile
+  logs, and photo-gallery controls.
+- Profile landing page and accessible configuration routes: RecallChek, Google Calendar,
+  ISN, HomeBinder, inspection duration, confirmation email defaults, invoice discounts,
+  action-list settings, classifications, and reusable location/task/time/cost/property
+  description lists.
+
+The current role was denied access to some company/administration pages. Export/download,
+billing/payment, and refund paths were intentionally not opened. Those boundaries are
+requirements: the replacement must enforce granular role-based access, not assume that any
+authenticated user is an administrator.
+
+2. Product outcome
+------------------
+Build a platform with three coordinated experiences:
+
+A. Inspector mobile app
+   - Create/open assigned inspection jobs.
+   - Capture photos, video/audio notes if desired, structured observations, measurements,
+     signatures, and offline notes.
+   - Sync safely when network becomes available.
+   - Receive AI-drafted observations and report sections, then accept, edit, reject, or
+     replace each suggestion.
+
+B. Operations web app
+   - Create and schedule work orders.
+   - Manage inspectors, clients, agents, pricing, confirmations, workflows, templates,
+     integrations, and company settings.
+   - Monitor schedule, work-order states, report status, workload, and receivables.
+
+C. Client/report portal
+   - Publish an approved immutable report version.
+   - Deliver an expiring, access-controlled report link.
+   - Support permitted recipients, audit access, amendments, invoices, and follow-up items.
+
+AI accelerates drafting; it does not make the final professional determination, publish a
+report, invoice a client, or send external communication without an authorized human action.
+
+3. End-to-end inspection and AI-report workflow
+------------------------------------------------
+1. Operations user creates a work order:
+   client/contact, property address, service type, date/time window, assigned inspector,
+   fees, status, and required templates/checklists.
+2. Scheduler assigns it and it appears in the inspector's mobile queue.
+3. Inspector downloads the job package and templates for offline use.
+4. At the property, the inspector captures:
+   - room/system/section selection;
+   - photo(s) with timestamp, local capture ID, optional annotation and caption;
+   - observation category (description, limitation, recommendation);
+   - structured condition/severity, location, material, age, and measurement fields;
+   - optional dictated note, which is transcribed locally or server-side after consent;
+   - evidence links connecting every observation to photos and other evidence.
+5. The app persists every capture locally in an encrypted device database and places media in
+   a durable upload queue. It must work with zero connectivity.
+6. When connected, the app uploads resumable encrypted media directly to object storage using
+   short-lived URLs, then syncs metadata to the API. The API deduplicates by capture ID and
+   checksum, so retries cannot create duplicate photos or observations.
+7. A server-side media pipeline virus-scans, strips or protects unnecessary EXIF location
+   data, creates thumbnails, runs OCR/image classification only under approved consent, and
+   records the exact AI model/version used.
+8. AI uses the selected company template, structured inspection context, captured evidence,
+   accepted company wording, and explicit instructions to create a draft:
+   - photo captions;
+   - concise observation summaries;
+   - suggested classification/severity;
+   - report-section narrative;
+   - missing-evidence or inconsistent-data warnings.
+9. The inspector reviews each suggestion with evidence beside it, then accepts, edits, or
+   rejects it. Every AI-originated sentence remains distinguishable from human-edited text.
+10. The web report editor assembles the approved observations, photos, signatures, contract
+    data, and template into a versioned draft.
+11. Required-item checks run before preview and publication. Failures identify missing
+    sections, required photos, mandatory wording, signatures, or unanswered items.
+12. Preview renders a non-final PDF/HTML version. Preview must be watermarked and must never
+    be treated as publication.
+13. An authorized reviewer publishes a final immutable report revision and explicitly chooses
+    recipients/delivery channels. Publishing, email sending, portal access, and integration
+    delivery are separate audited confirmation steps.
+14. Post-publication corrections create an amendment/new version; never overwrite the
+    previously delivered report silently.
+
+4. Core functional domains
+--------------------------
+4.1 Identity, companies, and authorization
+- Multi-tenant company isolation.
+- Users, inspectors, schedulers, reviewers, office staff, accounting users, administrators,
+  read-only users, and external client/agent recipients.
+- Role and permission checks at API, UI, object-storage, background-job, and report-link
+  layers.
+- Per-company configuration and template ownership.
+- MFA, session expiry, device revocation, audit trail, and least-privilege defaults.
+
+4.2 CRM and work orders
+- Clients, contacts, agents, properties, work orders, appointments, services, fees, taxes,
+  discounts, contracts, and status history.
+- Search by authorized client, address, report number, inspector, date, and state.
+- States including booked, in progress, completed, cancelled, and report lifecycle states
+  such as draft, in review, published, amended, and archived.
+- Immutable state-transition audit events with actor, time, source, reason, and correlation
+  ID.
+
+4.3 Schedule and dispatch
+- Day, week, month, and map views.
+- Previous/next period controls, Today, date picker, inspector filter, capacity indicators,
+  expected duration, travel time, and conflict detection.
+- Read-only map display for authorized schedules; no silent exposure of client locations.
+- Assignment notifications and mobile calendar synchronization.
+
+4.4 Mobile inspection capture
+- iOS and Android app.
+- Offline-first local database, encrypted at rest, resumable sync, conflict handling, and
+  explicit sync status.
+- Camera/gallery capture; multi-photo capture; markup; retake; rotate; caption; section
+  association; evidence ordering; and storage/quota indicators.
+- Structured checklists configurable by service type and company template.
+- Dictation/transcription as optional assistance, with clear recording consent.
+- Required-item checks before marking inspection capture complete.
+- Mobile activity log and device-sync diagnostic view.
+
+4.5 Report authoring and publishing
+- Configurable report categories, sections, items, classifications, standardized text,
+  templates, photo layouts, title pages, summary name, footer, numbering, logos, and QR
+  code placement.
+- Work-order, report-authoring, audit-log, photo gallery, template, global search, and
+  required-item views are distinct modules.
+- Draft autosave, unsaved-change warning, edit locks or optimistic concurrency, revision
+  history, comments, reviewer assignment, and compare-version capability.
+- Preview, validation, render/PDF generation, publication, recipient selection, email
+  delivery, client portal, and amendment workflows.
+- Publishing and sending need explicit confirmation and durable audit records.
+
+4.6 Operations configuration
+- Company identity and report branding.
+- Inspector accounts/access.
+- Typical inspection duration and confirmation-email defaults.
+- Fees, taxes, discounts, and online payment configuration.
+- Agents and agent usage.
+- Action-list/follow-up settings.
+- Location/task/time/cost/property-description reusable lists.
+- Classification wording and ordering.
+- Integrations: calendars, booking networks, appliance data, report portals, payment
+  providers, and marketing automation.
+- Data exports with elevated permission, field selection, explicit confirmation, audit log,
+  rate limits, and secure expiring download links.
+
+4.7 Finance and analytics
+- Subscription/credits, invoices, receivables, payments, discounts, tax reporting, and
+  business dashboards.
+- The observed subscription screen is per-user and supports: retain current status, extend
+  an annual subscription, manage monthly payments, and continue to a separate card-entry
+  step. Reproduce this as an explicit review -> confirm -> provider-hosted payment flow;
+  do not charge a card when a radio option is selected.
+- Finance privileges must be separated from inspection/report-authoring privileges. In the
+  observed account, Accounts Receivable and card-processor configuration routes correctly
+  returned a privilege-denied page. The replacement must return an unambiguous 403/API
+  authorization error and an accessible UI explanation, not merely hide the navigation.
+- Subscription lifecycle: trial, active, grace period, past due, cancelled, expired, and
+  renewal pending. Keep a timestamped status history and never reduce access silently.
+- Credits and subscriptions use an immutable ledger: purchase, grant, consume, adjustment,
+  refund, expiration, and reversal entries. Each entry requires an idempotency key and a
+  business reason.
+- Invoice lifecycle: draft, issued, delivered, partially paid, paid, overdue, void, written
+  off, and refunded. Generate immutable invoice revisions and credit notes instead of
+  modifying a delivered invoice.
+- Receivables: authorized financial users need aging buckets, customer/work-order linkage,
+  balance calculation, payment allocation, and controlled collection/export workflows.
+- Discounts must support named rules, eligibility, effective dates, fixed/percentage
+  calculation, stacking policy, audit trail, and invoice visibility. The observed system
+  exposes invoice-discount administration, including create and edit actions.
+- Taxes require jurisdiction/version/effective-date rules, exemptions, rounding rules,
+  invoice snapshots, and authorized tax-report generation.
+- Payment collection must use a PCI-compliant payment service provider's hosted fields or
+  hosted checkout. The platform must never receive, store, log, or display raw card number,
+  CVV, or full bank-account data. Store only provider tokens and non-sensitive display
+  metadata.
+- Store provider webhook events durably; validate signatures, deduplicate events, reconcile
+  provider transaction state, and alert on failed/ambiguous payment events.
+- Financial exports and report downloads require explicit confirmation, elevated permission,
+  audit logging, and short-lived encrypted download links. They were not opened during this
+  review to avoid downloading sensitive data.
+- Refund workflow requirements inferred from the observed form:
+  * requester/contact identity and company association;
+  * refund category selection for annual subscription, monthly subscription, and prepaid
+    credits;
+  * most-recent purchase date and requested subscription/credit end date;
+  * free-text reason and mandatory acknowledgement/attestation;
+  * client-side completeness validation plus server-side validation;
+  * submission creates a pending request, not an immediate refund;
+  * authorized finance reviewer approval/rejection, provider refund execution, ledger
+    reversal/credit note, notification, and full audit trail;
+  * explicit handling for requests beyond the configured refund window.
+- Migration consent is separate from billing but similarly high risk: present the disclosure,
+  record versioned informed consent, keep the generation link disabled until consent is
+  recorded, and audit the data-transfer request.
+
+5. AI requirements and safeguards
+---------------------------------
+- Treat AI output as a non-authoritative draft, never as a final inspection conclusion.
+- Show the source evidence for every suggestion: photo IDs, captured fields, template rule,
+  or accepted company wording.
+- Do not invent missing observations. When evidence is insufficient, return a "needs human
+  inspection" warning rather than a conclusion.
+- Confidence alone cannot trigger acceptance/publication.
+- Support company-specific approved language and blocked phrases.
+- Preserve model, prompt-template, evidence references, output, acceptance/edit/rejection,
+  and final human editor in the audit record.
+- Run tenant isolation and redaction controls before data reaches an AI provider. Prefer a
+  contracted enterprise/private inference deployment; obtain contractual data-use, retention,
+  residency, and no-training guarantees.
+- Provide model/version rollout controls, evaluation sets, prompt-injection defenses for
+  OCR/transcribed content, abuse monitoring, and a non-AI manual workflow fallback.
+- Require human review for any safety-related recommendation, deficiency, cost estimate,
+  compliance statement, or publish/send action.
+
+6. Data model (minimum)
+-----------------------
+- Tenant, User, Role, Permission, Device, Session, AuditEvent.
+- Client, Contact, Agent, Property, WorkOrder, Appointment, Assignment, StatusHistory.
+- Inspection, Template, ReportSection, ReportItem, Observation, Classification, Severity,
+  Measurement, RequiredItemRule.
+- MediaAsset, MediaUpload, PhotoAnnotation, EvidenceLink, OCRResult, AIJob, AISuggestion,
+  AIReviewDecision.
+- ReportDraft, ReportRevision, RenderJob, PublishedReport, Recipient, Delivery, PortalLink,
+  Amendment.
+- Invoice, Payment, TaxRule, DiscountRule, Subscription/CreditLedger.
+- IntegrationConnection, IntegrationSyncJob, Notification, ExportJob.
+
+7. System architecture
+----------------------
+Clients:
+- Cross-platform mobile app (React Native or Flutter) for camera-first offline capture.
+- Responsive web app (React/TypeScript or equivalent) for dispatch, report authoring,
+  configuration, finance, and administration.
+
+Services:
+- API gateway/BFF with REST or GraphQL APIs.
+- Transactional relational database (PostgreSQL).
+- Object storage for original media and rendered reports; short-lived signed upload/download
+  URLs; encryption at rest.
+- Queue/workflow system for media processing, OCR, AI drafts, notification, rendering,
+  integration sync, and export jobs.
+- Search index for authorized work-order/report search.
+- Report-rendering service that produces deterministic HTML/PDF from versioned data and
+  templates.
+- Notification service for email/SMS/push with delivery audit.
+- Observability: structured logs with redaction, metrics, traces, alerting, backups, and
+  disaster recovery.
+
+8. API and sync rules
+---------------------
+- Every write uses an idempotency key and a request correlation ID.
+- Mobile operations use client-generated UUIDs and version vectors/revisions.
+- Media upload sequence: create upload intent -> upload directly -> verify checksum ->
+  finalize metadata -> background processing -> available/failed state.
+- Sync conflicts must be visible to the user; never silently overwrite a newer observation.
+- Clients receive only scoped records. Pagination, filtering, and sort controls must be
+  server-enforced.
+- Webhooks and integrations use signed requests, retries, dead-letter queues, and replay
+  protection.
+
+9. Recommended delivery plan
+----------------------------
+Phase 0: Discovery and safety foundation
+- Map data migration needs, role matrix, report templates, compliance needs, retention,
+  integrations, and acceptance criteria.
+- Build tenant/auth/audit foundations and a production-like test environment.
+
+Phase 1: Mobile inspection MVP
+- Work-order assignment, offline job download, photo capture, structured observations,
+  resumable sync, basic schedule, and web work-order viewer.
+
+Phase 2: Report MVP
+- Templates, draft report editor, evidence-linked photos, required-item validation,
+  preview, reviewer approval, versioned PDF/HTML publication, and portal delivery.
+
+Phase 3: AI assistance
+- Photo captioning/OCR, structured draft suggestions, evidence/provenance UI, human review,
+  quality evaluation, and model governance.
+
+Phase 4: Full operations replacement
+- Scheduling, clients/agents, fees/taxes/discounts, confirmations, dashboards,
+  receivables, integrations, configuration, exports, and migration tooling.
+
+Phase 5: Controlled migration and rollout
+- Import a pilot tenant, reconcile counts/reports, dual-run where necessary, train users,
+  measure AI acceptance/correction rates, then migrate in waves with rollback capability.
+
+10. First decisions required
+----------------------------
+- Select target jurisdictions and inspection/report compliance rules.
+- Confirm whether AI processing may use cloud providers and which data-residency rules apply.
+- Choose offline retention period, device-management requirements, and photo retention.
+- Define report approval roles and publication authority.
+- Identify every third-party integration and its migration/API constraints.
+- Agree on the minimum report template/service types for the first pilot.
+- Decide whether billing/payments are in scope for the first production release or a later
+  phase.

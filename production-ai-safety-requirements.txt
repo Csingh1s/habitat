@@ -1,0 +1,277 @@
+PRODUCTION AI SAFETY REQUIREMENTS
+Home inspection photo-to-report system
+Builder implementation specification
+Generated: 2026-10-04
+
+1. Purpose
+----------
+The product may use AI to organize inspection evidence and draft report content. It must not
+allow AI to independently diagnose a property, decide a safety condition, make a code claim,
+publish a report, or deliver a report to a client.
+
+Incorrect reports can harm clients, inspectors, builders, and the business. Therefore, AI
+output is always a reviewable draft. A qualified, authorized human inspector/reviewer is
+responsible for each final finding, recommendation, report approval, and client delivery.
+
+2. Required safety rule
+-----------------------
+NO AI-GENERATED REPORT CONTENT MAY BE PUBLISHED, EMAILED, EXPORTED, OR MADE AVAILABLE TO A
+CLIENT UNTIL AN AUTHORIZED HUMAN HAS REVIEWED AND APPROVED THE report version.
+
+The API must enforce this rule server-side. Hiding a Publish button in the user interface is
+not sufficient.
+
+3. Automation classification
+----------------------------
+
+3.1 Tier A: deterministic automation
+These tasks must use normal software rules. They do not require generative AI.
+
+| Capability | Implementation requirement | Human involvement |
+|---|---|---|
+| Photo upload | Checksum, resumable upload, retry queue, idempotency key | Only resolve failures |
+| Duplicate photo detection | Checksum and perceptual hash | Confirm intentional duplicates |
+| Photo quality | Blur, brightness, resolution, orientation, framing thresholds | Retake decision |
+| Required checklist items | Rules engine against selected service template | Complete or waive with reason |
+| Required photos | Configurable template rule by report section | Add photo or waive with reason |
+| Required fields | Schema validation | Correct missing values |
+| Status workflows | Server-side state machine and permissions | Authorized transition |
+| Audit events | Immutable append-only event log | None |
+| Report rendering | Versioned template/PDF/HTML renderer | Review rendered output |
+| Access control | Role/tenant checks on every API request | Administration only |
+
+3.2 Tier B: AI can assist strongly
+AI creates suggestions only. The user must be shown the evidence, confidence, and controls to
+accept, edit, reject, or mark "needs verification."
+
+| Area | AI assistance | Required UI/result |
+|---|---|---|
+| Photo routing | Suggest category: roof, electrical, plumbing, HVAC, interior, exterior | Category suggestion + change option |
+| Component recognition | Suggest electrical panel, water heater, furnace, roof covering, outlet, railing, etc. | Component candidate + source photo |
+| OCR | Extract clear manufacturer/model/serial/label text | Editable field + image reference |
+| Caption | Draft factual photo caption | Editable caption |
+| Voice notes | Speech-to-text and formatting | Editable transcript |
+| Report item | Suggest template section/item based on photo plus inspector note | Proposed structured item |
+| Standard wording | Format approved structured data into company wording | Editable draft wording |
+| Photo marker | Mark possible visual area using bounding box/polygon | Move/delete/hide marker |
+| Completeness | Flag missing photos, sections, locations, evidence, or contradictory entries | Non-final warning list |
+| Summary | Draft summary from human-approved observations only | Editable summary |
+
+3.3 Tier C: AI can flag a possible visible cue only
+AI may create a REVIEW CANDIDATE. It must not create a confirmed defect, final severity, or
+final recommendation.
+
+| Visual cue | Allowed AI wording | Human inspector must decide |
+|---|---|---|
+| Stain/discoloration | "Possible staining visible" | Cause, active/historic status, severity |
+| Crack | "Crack or linear feature visible" | Structural importance and action |
+| Corrosion | "Corrosion visible at surface/connection" | Functional/safety impact |
+| Roof surface concern | "Possible damaged/missing roof material visible" | Leak risk, repair scope, roof condition |
+| Electrical panel concern | "Possible opening/labeling irregularity visible" | Safety risk, code relevance, recommendation |
+| HVAC/water heater | "Equipment/label/corrosion visible" | Operation, performance, repair/replace decision |
+| Plumbing moisture | "Possible moisture/corrosion evidence visible" | Active leak/source/damage |
+| Stair/railing | "Handrail/guard condition may need review" | Safety/compliance and correction |
+| Foundation feature | "Crack/staining feature visible" | Structural movement and specialist need |
+| Appliance | "Installed appliance/label visible" | Functional test and installation condition |
+
+3.4 Tier D: mandatory human-only decisions
+AI MUST NOT autonomously make or finalize:
+- defect, safety-hazard, material-failure, or code-violation conclusions;
+- structural, electrical, plumbing, roofing, HVAC, environmental, or legal determinations;
+- severity/classification or repair/replacement recommendations;
+- functional-test results or claims about hidden/inaccessible conditions;
+- inspection completion or inspector signature;
+- report approval, publication, email delivery, portal sharing, or amendment;
+- client, agent, or builder communication;
+- payment, refund, invoice, subscription, export, deletion, or permission decisions.
+
+4. Approved models and task routing
+-----------------------------------
+Recommended model roles:
+
+| Task | Preferred implementation |
+|---|---|
+| Blur/brightness/duplicate image | On-device/local computer vision, not an LLM |
+| Basic category/component/OCR/caption | Qwen2.5-VL-3B or Qwen2.5-VL-7B evaluation candidate |
+| Bounding box / visual marker | Qwen2.5-VL candidate plus inspector editing |
+| Complex wording/summary | GPT-5 Mini or evaluated alternative |
+| Required item validation | Rules engine, not AI |
+| Final publishing decision | Authorized human, not AI |
+
+Model selection must be based on a measured, company-owned evaluation set. Do not choose a
+model solely on price or generic benchmark scores.
+
+5. Mandatory AI output contract
+-------------------------------
+All production AI calls must return schema-validated structured output, not unstructured text
+that is copied directly into a report.
+
+Minimum fields:
+
+{
+  "suggestion_id": "uuid",
+  "model_id": "versioned-model-name",
+  "model_version": "immutable-version",
+  "category_candidate": "electrical",
+  "component_candidate": "service_panel",
+  "location_candidate": null,
+  "visible_indicator_candidates": ["possible_unprotected_opening"],
+  "evidence": [
+    {
+      "media_asset_id": "uuid",
+      "marker": {"x": 0.12, "y": 0.34, "width": 0.20, "height": 0.18}
+    }
+  ],
+  "draft_caption": "Electrical service panel.",
+  "draft_observation": "An opening appears visible in the panel enclosure.",
+  "draft_recommendation": null,
+  "confidence": 0.71,
+  "uncertainty_reason": "Single photo; functional condition cannot be determined.",
+  "requires_human_review": true
+}
+
+Requirements:
+- Reject output that does not satisfy the schema.
+- Do not create a final report item directly from an AI response.
+- Store source media IDs and markers with every suggestion.
+- Do not use confidence as approval or publishing authorization.
+- AI-generated recommendations must be absent or clearly marked as a draft until an
+  inspector explicitly approves/edits them.
+
+6. Inspector review requirements
+--------------------------------
+For every AI suggestion, provide:
+- source photo/video/note and evidence marker;
+- model name/version and generation time;
+- AI category/component/wording suggestion;
+- confidence and uncertainty explanation;
+- Accept, Edit, Reject, and Needs Verification actions;
+- a required reason when overriding a high-priority rule or waiving a required item;
+- an audit event recording the reviewer and their final decision.
+
+Accepted AI content must be marked as:
+- accepted without text change;
+- accepted with human edit;
+- rejected;
+- pending verification;
+- superseded by later evidence.
+
+7. Report lifecycle and client-delivery gate
+--------------------------------------------
+
+State machine:
+
+CAPTURE_IN_PROGRESS
+  -> READY_FOR_SYNC
+  -> DRAFT
+  -> INSPECTOR_REVIEW_REQUIRED
+  -> INSPECTOR_APPROVED
+  -> QUALITY_REVIEW_REQUIRED
+  -> APPROVED_FOR_PUBLICATION
+  -> PUBLISHED
+  -> DELIVERED
+
+Rules:
+1. AI may only generate suggestions in DRAFT.
+2. DRAFT cannot move to INSPECTOR_APPROVED while unresolved required items, sync failures,
+   or "needs verification" observations remain.
+3. The approving inspector must have a qualified role and must explicitly confirm the draft.
+4. QUALITY_REVIEW_REQUIRED is mandatory when configured by company, jurisdiction, service
+   type, AI-risk score, or inspector experience level.
+5. Only an authorized publisher can move a report to APPROVED_FOR_PUBLICATION.
+6. Publishing creates an immutable ReportRevision with a render checksum.
+7. Delivery requires a separate explicit recipient/channel confirmation.
+8. A later change creates an amendment/new revision; it must not silently overwrite the
+   delivered report.
+
+API controls:
+- `POST /reports/{id}/publish` requires an approved report revision, authorization, an
+  idempotency key, and a confirmation token created immediately before publish.
+- `POST /reports/{id}/deliver` requires a published revision, explicit recipients, approved
+  delivery channel, authorization, idempotency key, and confirmation token.
+- The API must reject direct calls that attempt to publish AI-only/unapproved content.
+
+8. Production accuracy and release gates
+----------------------------------------
+Never use one overall "AI accuracy" value. Evaluate each task and inspection category
+separately, using held-out, consented, de-identified, inspector-reviewed data.
+
+Measure:
+- photo-quality precision/recall;
+- duplicate-detection precision/recall;
+- component/category top-1 and top-3 accuracy;
+- OCR character/field accuracy;
+- evidence-marker overlap with inspector-marked region;
+- false-positive rate for visible-cue flags;
+- missed-cue rate;
+- inspector acceptance, edit, rejection, and needs-verification rates;
+- time saved per inspection;
+- report correction/amendment rate after publication;
+- disagreement rate by category and inspector;
+- performance by lighting, device camera, home age/type, and other relevant cohorts.
+
+Recommended launch gates:
+
+| Capability | Minimum production condition |
+|---|---|
+| Photo quality/duplicates | Measured against held-out photos; error rate accepted by product/inspection leads |
+| Component suggestion | Category-specific target achieved, with easy correction UI |
+| OCR | Display only as editable draft; no automatic database write |
+| Visible-cue flag | Shadow-mode evaluation shows acceptable false-positive/miss rate for that category |
+| Draft wording | Inspector review is mandatory; acceptance/edit rate monitored |
+| Report summary | Uses only approved observations and remains reviewer-approved |
+| Publish/deliver | Always human authorized; no accuracy threshold can remove this gate |
+
+Threshold values must be set by the company safety/compliance owner after measuring real
+data. Do not invent a 95% or similar generic threshold; the acceptable false-positive and
+missed-issue rate differs for roofing, electrical, structure, plumbing, and HVAC.
+
+9. Rollout plan
+---------------
+Phase 1: no-risk productivity
+- Photo quality checks, duplicate detection, offline sync, speech-to-text, and templates.
+
+Phase 2: human-reviewed suggestions
+- Component/category suggestion, OCR, captions, photo markers, draft report items.
+- Run first in shadow mode: collect suggestions and inspector decisions without changing
+  reports automatically.
+
+Phase 3: controlled pilot
+- Enable selected inspectors and categories.
+- Review errors weekly with experienced inspectors.
+- Keep manual template entry available for every report section.
+
+Phase 4: broader release
+- Enable only categories that pass category-specific release gates.
+- Monitor drift, rejection rate, amendments, and client complaint signals.
+- Disable or roll back a model/category immediately if safety/quality thresholds are crossed.
+
+10. Privacy, security, and audit
+--------------------------------
+- Keep tenants/companies isolated at database, API, object-storage, queue, search, and AI
+  retrieval layers.
+- Send minimum necessary context to the AI provider; redact client names, contact details,
+  payment data, and unrelated report content.
+- Use encrypted storage/transit, short-lived media URLs, access logging, retention controls,
+  and provider contracts that prohibit training on customer data.
+- Preserve original media, marker, model/prompt version, AI output, reviewer action, final
+  wording, report revision, publish event, and delivery event for audit.
+- Provide a manual non-AI path for every inspection/report action.
+
+11. Builder acceptance tests
+----------------------------
+The implementation is not complete until these tests pass:
+
+1. An AI suggestion cannot become a final report item without an inspector review event.
+2. A report containing unresolved required items or pending verification cannot be approved.
+3. A report with no qualified human approval cannot be published through UI or API.
+4. A published report cannot be overwritten; edits create a distinct amendment/revision.
+5. A delivery request cannot be made without a published revision, explicit recipients, and
+   a fresh confirmation token.
+6. An inspector can reject every AI suggestion and complete the report manually.
+7. The report audit view shows source evidence, AI model/version, reviewer action, and
+   final wording for every AI-assisted item.
+8. A tenant cannot retrieve another tenant's media, suggestion, report, or template.
+9. Provider/model outage leaves photo capture, manual checklist entry, and report drafting
+   usable without AI.
+10. Security logs contain no credentials, payment data, or unneeded client data.

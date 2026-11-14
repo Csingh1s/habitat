@@ -1,0 +1,455 @@
+HOME INSPECTION IMAGE ANALYSIS API
+Production architecture specification
+Stack: Python FastAPI + PostgreSQL + managed queues + managed GPU inference
+Generated: 2026-10-08
+
+1. Architecture decision
+------------------------
+Build the image-analysis capability as an asynchronous, multi-tenant API. It receives
+authorized inspection evidence, creates a review candidate, and returns structured AI
+suggestions for an inspector to evaluate.
+
+It must NOT return a final defect determination, final recommendation, report approval, or
+publication decision.
+
+Primary stack:
+- FastAPI (Python 3.12+) for the API and workflow services.
+- PostgreSQL for transactional data, tenancy, state, approvals, and audit records.
+- S3-compatible encrypted object storage for original images, thumbnails, and derivatives.
+- Managed message queue for asynchronous media and AI jobs.
+- Managed GPU inference service for Qwen2.5-VL-3B-Instruct, initially deployed as a
+  versioned inference endpoint.
+- Redis only for short-lived rate limiting, idempotency, and job-progress caching; PostgreSQL
+  remains the source of truth.
+- OpenTelemetry, centralized structured logs with redaction, metrics, traces, and alerts.
+
+The API is cloud-provider neutral. Implement storage, queue, key management, and inference
+through interfaces so AWS, GCP, or Azure managed services can be substituted.
+
+2. Critical principle
+---------------------
+The API produces an AI REVIEW CANDIDATE, not a defect.
+
+Allowed:
+- "Possible corrosion visible; inspector review required."
+- "Likely component: electrical service panel."
+- "Image appears blurry; retake suggested."
+
+Prohibited:
+- "The electrical panel is unsafe."
+- "The roof is leaking."
+- "This is a code violation."
+- "Publish this report."
+
+Every AI result must contain source evidence, uncertainty, model/version, and
+requires_human_review=true.
+
+3. High-level request flow
+--------------------------
+
+Mobile/Web client
+  -> Identity provider issues short-lived access token
+  -> FastAPI authorizes tenant, user, work order, and inspection access
+  -> API creates UploadIntent and returns a short-lived signed object-storage upload URL
+  -> Client uploads original image directly to object storage
+  -> Client finalizes upload with checksum and media metadata
+  -> API enqueues MediaValidationJob
+  -> Media worker scans, validates, strips/sanitizes metadata, creates thumbnail
+  -> API enqueues ImageAnalysisJob
+  -> GPU inference worker runs Qwen and/or specialized OCR/CV pipeline
+  -> AI output is schema-validated and policy-filtered
+  -> ReviewCandidate is stored with evidence links and audit records
+  -> Client polls/subscribes for job status
+  -> Authorized inspector accepts, edits, rejects, or marks Needs Verification
+  -> Only accepted/edited result can create a draft report observation
+  -> Separate report workflow validates, approves, publishes, and delivers
+
+4. Service boundaries
+---------------------
+
+4.1 API service (FastAPI)
+- OAuth/OIDC token validation.
+- Tenant and role authorization.
+- Request schema validation.
+- Upload-intent creation/finalization.
+- Work-order, inspection, media, analysis-job, suggestion, and reviewer-decision endpoints.
+- Idempotency and API versioning.
+- Database transactions and audit event creation.
+- Emits domain events; does not run GPU work synchronously.
+
+4.2 Media processing worker
+- Triggered only after upload finalization.
+- Verifies declared content type, object size, image decodability, and SHA-256 checksum.
+- Runs malware scanning before image decode is trusted.
+- Removes EXIF GPS/location metadata by default and records whether metadata was removed.
+- Generates standardized thumbnails/previews.
+- Calculates perceptual hash for duplicate detection.
+- Computes deterministic image quality metrics: resolution, blur estimate, exposure estimate,
+  orientation, and perceptual similarity.
+- Moves unsafe/quarantined images to a non-accessible quarantine location.
+
+4.3 AI orchestration worker
+- Reads only approved, validated media from object storage using a short-lived service URL.
+- Selects model/version based on an explicit ModelRoutingPolicy.
+- Calls the managed GPU inference endpoint with:
+  * normalized image;
+  * user-selected inspection category, if available;
+  * approved controlled vocabulary;
+  * no client name, address, financial data, or unrelated report text;
+  * JSON-schema constrained instruction.
+- Stores raw provider/model response in protected evidence storage only when policy allows.
+- Converts the response into an internal versioned AI suggestion schema.
+- Rejects malformed, unsafe, unsupported, or policy-violating output.
+- Does not create a report observation or change a work-order status.
+
+4.4 Rules and policy service
+- Owns controlled taxonomy, required-item rules, company-specific template terms, model
+  routing policy, feature flags, category allowlists, and risk policy.
+- Deterministically blocks unsupported categories/models from generating client-facing text.
+- Calculates whether a second reviewer is mandatory.
+
+4.5 Report service (separate bounded context)
+- Converts inspector-approved structured observations into report-draft records.
+- Runs required-item validation and deterministic rendering.
+- Enforces qualified human approval before publication and delivery.
+- Must not accept an AI result as a final finding directly.
+
+5. Core data model
+------------------
+
+Tenant
+- id, name, data_region, AI feature policy, retention policy.
+
+User
+- id, tenant_id, identity_provider_subject, role, status.
+
+Inspection
+- id, tenant_id, work_order_id, assigned_inspector_id, service_template_version, state.
+
+MediaAsset
+- id, tenant_id, inspection_id, original_object_key, sanitized_object_key, checksum_sha256,
+  perceptual_hash, mime_type, dimensions, capture_time, upload_state, processing_state,
+  security_scan_state, EXIF sanitization state, created_by.
+
+AnalysisJob
+- id, tenant_id, inspection_id, media_asset_id, idempotency_key, status, retry_count,
+  requested_category, model_policy_version, selected_model_id, selected_model_version,
+  created_at, started_at, completed_at, error_code.
+
+AISuggestion
+- id, tenant_id, analysis_job_id, schema_version, category_candidate,
+  component_candidate, material_candidate, visible_indicator_candidates,
+  draft_caption, draft_observation, draft_recommendation, confidence,
+  uncertainty_reason, requires_human_review, status.
+
+EvidenceMarker
+- id, suggestion_id, media_asset_id, normalized_x, normalized_y, normalized_width,
+  normalized_height, label, source.
+
+SuggestionReview
+- id, tenant_id, suggestion_id, reviewer_id, decision, edited_values,
+  review_reason, created_at.
+- decision values: accepted_unchanged, accepted_edited, rejected, needs_verification.
+
+ReportObservation
+- id, tenant_id, inspection_id, source_suggestion_id nullable, category, component,
+  classification, location, wording, recommendation, status, approved_by.
+
+AuditEvent
+- id, tenant_id, actor_id nullable, correlation_id, aggregate_type, aggregate_id,
+  event_type, before_state_hash, after_state_hash, metadata_redacted, occurred_at.
+
+6. API surface: version 1
+-------------------------
+
+All endpoints require:
+- OAuth/OIDC access token.
+- Tenant context derived from the token, never trusted from arbitrary request headers.
+- Request correlation ID; server creates one if absent.
+- Idempotency-Key on create/transition operations.
+
+6.1 Upload evidence
+
+POST /v1/inspections/{inspection_id}/media/upload-intents
+
+Purpose:
+- Creates a direct-to-object-storage upload intent.
+
+Request:
+{
+  "file_name": "roof-east-slope.jpg",
+  "content_type": "image/jpeg",
+  "content_length": 2451821,
+  "checksum_sha256": "hex-string",
+  "capture_timestamp": "2026-10-08T18:30:00Z",
+  "requested_category": "roofing"
+}
+
+Response:
+{
+  "media_asset_id": "uuid",
+  "upload_url": "short-lived-signed-url",
+  "required_headers": {},
+  "expires_at": "timestamp"
+}
+
+POST /v1/media/{media_asset_id}/complete
+
+Purpose:
+- Finalizes a direct upload and queues validation. Does not accept image bytes.
+
+Request:
+{
+  "storage_etag": "provider-etag",
+  "checksum_sha256": "hex-string"
+}
+
+Response:
+{
+  "media_asset_id": "uuid",
+  "processing_state": "queued"
+}
+
+6.2 Request analysis
+
+POST /v1/media/{media_asset_id}/analysis-jobs
+
+Rules:
+- Media must be security-scanned and ready.
+- Caller must have inspection evidence permission.
+- Requested category must be allowed by the tenant template.
+- Repeated request using the same idempotency key returns the existing job.
+
+Request:
+{
+  "requested_category": "roofing",
+  "component_hint": "roof_covering",
+  "inspector_note": "Possible damage near rear valley.",
+  "analysis_profile": "component_and_visible_cue_v1"
+}
+
+Response:
+{
+  "analysis_job_id": "uuid",
+  "status": "queued",
+  "requires_human_review": true
+}
+
+GET /v1/analysis-jobs/{analysis_job_id}
+
+Response status:
+- queued
+- validating_media
+- running_inference
+- completed
+- failed
+- rejected_by_policy
+
+6.3 Retrieve review candidates
+
+GET /v1/inspections/{inspection_id}/ai-suggestions
+
+Response item:
+{
+  "suggestion_id": "uuid",
+  "status": "pending_review",
+  "model": {
+    "id": "qwen2.5-vl-3b-instruct",
+    "version": "immutable-deployment-version",
+    "policy_version": "2026-10-08"
+  },
+  "category_candidate": "roofing",
+  "component_candidate": "asphalt_shingles",
+  "material_candidate": "asphalt_shingles",
+  "visible_indicator_candidates": [
+    {
+      "label": "possible_damaged_surface_material",
+      "confidence": 0.71
+    }
+  ],
+  "evidence": [
+    {
+      "media_asset_id": "uuid",
+      "marker": {
+        "x": 0.41,
+        "y": 0.23,
+        "width": 0.12,
+        "height": 0.09
+      }
+    }
+  ],
+  "draft_caption": "Roof surface at rear slope.",
+  "draft_observation": "Possible surface damage is visible.",
+  "draft_recommendation": null,
+  "confidence": 0.71,
+  "uncertainty_reason": "The image alone cannot establish leakage, material condition, or repair scope.",
+  "requires_human_review": true
+}
+
+6.4 Inspector decision
+
+POST /v1/ai-suggestions/{suggestion_id}/reviews
+
+Request:
+{
+  "decision": "accepted_edited",
+  "final_category": "roofing",
+  "final_component": "asphalt_shingles",
+  "final_caption": "Rear roof slope.",
+  "final_observation": "Localized shingle damage was observed at the rear roof slope.",
+  "final_recommendation": "Have a qualified roofing contractor evaluate and repair as needed.",
+  "markers": [
+    {
+      "media_asset_id": "uuid",
+      "x": 0.41,
+      "y": 0.23,
+      "width": 0.12,
+      "height": 0.09
+    }
+  ],
+  "review_reason": "Inspector confirmed visible damage during site inspection."
+}
+
+Rules:
+- Reviewer must be assigned to the inspection or hold an allowed supervisory role.
+- A decision may create a DRAFT report observation only when accepted_unchanged or
+  accepted_edited.
+- needs_verification cannot create a final report observation.
+- Rejected suggestions are retained for evaluation/audit but are excluded from the report.
+
+6.5 Report publish protection
+
+POST /v1/report-revisions/{report_revision_id}/approve
+POST /v1/report-revisions/{report_revision_id}/publish
+POST /v1/published-reports/{published_report_id}/deliver
+
+Server-side preconditions:
+- All required template rules passed or authorized waiver exists.
+- No unresolved needs_verification suggestion is associated with required report content.
+- No failed media processing/job that impacts required evidence.
+- Qualified human approval exists for exactly the revision being published.
+- Publish/delivery uses a fresh confirmation token and idempotency key.
+- AI-only content is not eligible for approval/publish/delivery.
+
+7. AI output schema and policy checks
+-------------------------------------
+The inference service must return JSON only. Validate using Pydantic models and reject:
+- unrecognized category/component/material values;
+- missing requires_human_review=true;
+- evidence marker outside normalized range 0..1;
+- malformed confidence values;
+- unsupported conclusion words such as "safe", "unsafe", "code violation", "must replace",
+  "defect confirmed", unless inserted by a qualified human reviewer;
+- client/personal data echoed into the response;
+- recommendation text when no inspector-approved controlled wording/rules allow it.
+
+Model output is never trusted as authorization, validation, or ground truth.
+
+8. Managed GPU inference deployment
+------------------------------------
+Deploy Qwen2.5-VL-3B-Instruct as a versioned private endpoint:
+- Container image pinned by digest.
+- Model weights pinned by immutable revision/checksum.
+- GPU inference endpoint has no public inbound access.
+- Only the AI orchestration worker service account may invoke the endpoint.
+- Model deployment receives an allowlisted, minimized input contract.
+- Autoscale workers from queue depth with maximum concurrency to protect GPU capacity.
+- GPU endpoint returns a signed response with model/version metadata.
+- Canary deploy a new model/version to a limited percentage of jobs before promotion.
+
+Use separate execution profiles:
+- quality_checks_v1: deterministic CV only.
+- component_routing_v1: Qwen category/component/caption candidate.
+- OCR_v1: OCR service plus Qwen normalization candidate.
+- visible_cue_v1: Qwen review candidate with mandatory evidence marker.
+
+Do not run "defect diagnosis" or publication profiles.
+
+9. Security and privacy controls
+--------------------------------
+- All object keys are opaque UUIDs; never include client name/address in key, URL, queue
+  message, or log.
+- Encrypt storage, database, queue, backups, and transit using managed keys.
+- Signed upload/read URLs must be single-purpose, short lived, and scoped to one object.
+- The API enforces tenant isolation in every database query and storage authorization check.
+- Strip EXIF GPS by default; preserve only if documented business/legal need and role policy
+  permits it.
+- Redact notes before model call: names, emails, phone numbers, addresses, payment data, and
+  report identifiers.
+- Do not use production client images to train a model without documented rights, retention
+  policy, and explicit governance approval.
+- Maintain immutable audit events for media upload, access, analysis request, model response,
+  reviewer decision, report approval, publication, and delivery.
+- Rate-limit upload and analysis endpoints per tenant/user/inspection to control abuse/cost.
+
+10. Reliability and operations
+------------------------------
+- Use outbox pattern: write database event and queue message transactionally.
+- Consumers are idempotent and tolerate at-least-once queue delivery.
+- Use exponential retry for transient storage/model errors; dead-letter irrecoverable jobs.
+- Do not retry malformed model output indefinitely; mark failed/rejected and surface a human
+  actionable error.
+- Preserve manual photo/note/report workflow during model outage.
+- Health checks: API, PostgreSQL, queue, object storage, media worker, inference endpoint.
+- SLO targets to define with product:
+  * upload-intent creation availability;
+  * media validation completion;
+  * analysis p50/p95 latency;
+  * failed job rate;
+  * review completion rate;
+  * report amendment rate after publication.
+- Alert on GPU inference failures, queue age, policy rejection spikes, schema validation
+  failures, unusual cost/request volume, and cross-tenant access attempts.
+
+11. Accuracy and model governance
+---------------------------------
+- No single "accuracy rate" is acceptable.
+- Evaluate each task and category separately: quality, duplicate, component, material, OCR,
+  evidence marker, visible-cue flags, and wording.
+- Split evaluation datasets by property/inspection, not individual image.
+- Release low-risk features first: quality, duplicates, OCR-as-editable-draft,
+  component/category suggestion, and captions.
+- Keep visible-cue results in shadow mode until inspector-reviewed metrics meet the
+  company-defined category-specific thresholds.
+- Track accepted unchanged, accepted with edits, rejected, and needs-verification decisions.
+- Record model, prompt/profile, taxonomy/template, and policy version on every suggestion.
+- A safety/quality owner must approve each model/profile/category release.
+
+12. Delivery plan
+-----------------
+Phase 0: Foundation
+- Tenant/auth model, PostgreSQL schema/migrations, storage interface, queue interface,
+  audit middleware, OpenAPI contract, test environment.
+
+Phase 1: Secure evidence ingestion
+- Upload intents, completion, malware scanning, EXIF sanitization, thumbnail creation,
+  checksum, perceptual hash, media states, and authenticated retrieval.
+
+Phase 2: Deterministic assistance
+- Quality checks, duplicate candidate detection, category/template selection, required-item
+  rules, human review UI API.
+
+Phase 3: Qwen review candidates
+- Managed Qwen deployment, asynchronous job orchestration, output schemas, policy filter,
+  evidence markers, review endpoints, feature flags, shadow-mode metrics.
+
+Phase 4: Report integration
+- Approved observations, versioned draft rendering, validation, qualified approval,
+  publication/delivery gate, full audit path.
+
+Phase 5: Evaluation and rollout
+- Consented/de-identified test data, category benchmarks, limited pilot, canary model
+  releases, monitoring, rollback controls.
+
+13. Definition of done for architecture
+----------------------------------------
+- API contracts are versioned in OpenAPI and integration tested.
+- Every write endpoint supports idempotency and produces a correlation/audit event.
+- No image bytes traverse the API service after upload intent creation.
+- Inference is asynchronous and cannot block mobile capture.
+- Every suggestion has evidence, uncertainty, model/version, and human-review requirement.
+- A direct API call cannot publish/deliver AI-only content.
+- Manual report workflow functions during inference outage.
+- Tenant isolation tests cover API, storage, queue, and database access.
+- Accuracy dashboards report per-task/per-category metrics and no universal "inspection
+  accuracy" claim.

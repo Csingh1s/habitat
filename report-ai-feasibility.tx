@@ -1,0 +1,147 @@
+REPORT AI FEASIBILITY MATRIX
+Read-only analysis of a shared Horizon report workspace
+Generated: 2026-10-04
+
+Scope and privacy
+-----------------
+This analysis inspected report-workspace structure and sanitized template vocabulary only.
+It did not read or reproduce the report narrative, client name, property address, financial
+data, contact data, existing photos, or report findings. No report control was selected and
+no report was saved, previewed, generated, published, sent, downloaded, or changed.
+
+Observed report structure
+-------------------------
+The active workspace has:
+- 165 interactive controls.
+- 133 template/item controls.
+- 4 editable text areas and 4 editable text inputs.
+- photo-loading and gallery-related controls.
+- required-item/completion checks.
+- templates, database search, mobile-log, preview, work-order, and separate report-publishing
+  workflows.
+- standardized roof-related vocabulary: orientation, roof-covering/membrane/flashing
+  materials, slope descriptors, and age choices.
+
+This is important: the report is a structured inspection database with generated narrative,
+not simply a word-processing document. The new system should retain structured observations,
+evidence links, standardized choices, and validation rules.
+
+Automation confidence tiers
+---------------------------
+Tier A: deterministic automation
+No AI judgment is needed. Software rules should execute these consistently.
+
+| Capability | Implementation | Human action |
+|---|---|---|
+| Photo upload retry/checksum | Mobile sync queue and storage checksum | None, except failed-sync recovery |
+| Duplicate media detection | Perceptual hash + checksum | Review only if flagged |
+| Required template item check | Rules engine against selected template | Resolve missing items |
+| Required photo check | Rules engine by category/item | Capture/waive with reason |
+| Mandatory report fields | Schema validation | Supply/confirm information |
+| Report template rendering | Versioned HTML/PDF renderer | Review before publishing |
+| Status/permission transitions | Server-side policy engine | Authorized action |
+| Audit log/revision creation | Immutable event/revision service | None |
+| Structured dropdown values | Configured controlled vocabulary | Choose/correct value |
+
+Tier B: high-value AI assistance
+AI can make a useful suggestion, but it must be visibly reviewable.
+
+| Report area | AI can assist with | Why it can help | Required human review |
+|---|---|---|---|
+| Photo intake | Blur, darkness, duplicate, poor framing | Visual quality is measurable | Retake decision |
+| Photo routing | Suggest exterior, roofing, electrical, plumbing, HVAC, interior, etc. | Common components are visually distinctive | Confirm category |
+| Roof template | Suggest material/orientation/visible surface condition | Current template has structured choices | Confirm material and condition |
+| Equipment labels | OCR serial/model/manufacturer text | Clear labels are machine-readable | Confirm OCR against photo |
+| Captions | Draft factual caption from visible component | Reduces repetitive typing | Edit/approve wording |
+| Voice notes | Transcribe and format | Inspector supplies the real context | Verify transcription |
+| Report routing | Suggest report section/item from photo + note | Templates constrain output | Confirm item/location |
+| Standard wording | Turn accepted structured choices into company style | Approved template language is controlled | Approve final observation |
+| Completeness | Flag likely missing photos/items or contradictions | Combines rules and evidence inventory | Decide whether omission is valid |
+| Summary draft | Summarize accepted observations | Reduces final writing time | Review for accuracy/priority |
+
+Tier C: AI may flag a visible cue, but inspector judgment is mandatory
+
+| Photo/evidence cue | Safe AI output | Inspector must determine |
+|---|---|---|
+| Stain/discoloration | "Possible staining visible" | Cause, active vs historic moisture, severity |
+| Crack | "Crack/linear feature visible" | Structural significance, monitoring/repair need |
+| Corrosion | "Corrosion visible at connection/surface" | Functional impact, safety, correction |
+| Roof damage | "Possible missing/damaged material visible" | Leak risk, repair scope, roof condition |
+| Electrical panel | "Possible opening/labeling/visible irregularity" | Electrical safety, code/repair recommendation |
+| HVAC/water heater | Component/label/visible corrosion suggestion | Operation, age interpretation, service need |
+| Plumbing | "Possible moisture/corrosion/leak evidence visible" | Active leak, source, damage extent |
+| Stair/railing | "Handrail/guard condition may need review" | Code, safety compliance, repair details |
+| Foundation | "Crack/staining feature visible" | Movement, structural effect, specialist referral |
+| Appliance | Model/label/basic visible state | Functional testing, installation compliance |
+
+Tier D: human-only professional decisions
+----------------------------------------
+AI must not make these decisions based on photos or notes:
+- Whether an issue is a defect, safety hazard, code violation, or material failure.
+- Whether a roof leaks, wiring is safe, a furnace operates correctly, or a crack is
+  structural.
+- Whether a component requires repair, replacement, monitoring, or specialist evaluation.
+- Whether an inaccessible area is acceptable.
+- Whether the inspection is complete.
+- Final severity/classification and final recommendation.
+- Report approval, signature, publication, or delivery.
+- Insurance, legal, regulatory, financial, payment, refund, deletion, or export decisions.
+
+Detailed photo-to-report decision flow
+--------------------------------------
+1. Inspector selects a category or takes an unclassified photo.
+2. App performs Tier A quality and duplicate checks.
+3. Vision/OCR service produces Tier B component/category and label suggestions.
+4. If a possible visual cue is found, AI adds an editable marker and creates a Tier C
+   "review candidate"; it does not create a final defect.
+5. Inspector adds context: location, accessibility, functional test result, measurement,
+   condition, limitation, and voice/text note.
+6. AI produces a structured draft using only:
+   - accepted template choices;
+   - the inspector's note;
+   - source media/evidence;
+   - company-approved wording.
+7. Inspector accepts, edits, rejects, or marks "needs verification."
+8. Only accepted/edited items become report observations.
+9. Tier A required-item validation runs before preview.
+10. An authorized reviewer publishes an immutable report version.
+
+Minimum data needed for trustworthy AI suggestions
+--------------------------------------------------
+Photo alone is insufficient for most inspection decisions. Capture these fields:
+- Template category and component.
+- Exact location/room/system.
+- Inspector-selected visible condition.
+- Accessibility/inspection limitation.
+- Functional-test result where applicable.
+- Measurement or equipment label where relevant.
+- One or more evidence photos/markers.
+- Inspector voice/text note.
+- Company-approved report language and classification rules.
+
+Recommended first AI release
+----------------------------
+Start with tasks likely to show useful quality:
+1. Photo quality and duplicate detection.
+2. Component/category suggestion.
+3. OCR of clear equipment labels.
+4. Photo caption draft.
+5. Speech-to-text for inspector notes.
+6. Structured report-item suggestion from photo + inspector note.
+7. Missing-photo/required-item validation.
+8. Draft summary of inspector-approved observations.
+
+Do not launch automated issue detection as a product promise until measured against a
+de-identified, inspector-reviewed test set for each category.
+
+Quality gates before rollout
+----------------------------
+For each category (for example, roofing or electrical):
+- Build a held-out inspector-reviewed evaluation set.
+- Measure component recognition, photo-quality accuracy, OCR accuracy, evidence-marker
+  overlap, false-positive rate, missed-cue rate, and inspector acceptance/edit/rejection rate.
+- Set category-specific release thresholds with inspectors; do not use one global "accuracy"
+  number.
+- Launch in shadow mode: show suggestions to inspectors but do not create report items.
+- Pilot with a small group, review errors weekly, and keep full manual entry available.
+- Re-evaluate whenever the model, prompt, template, or classification rules change.

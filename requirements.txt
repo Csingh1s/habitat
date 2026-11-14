@@ -1,0 +1,173 @@
+HORIZON REQUIREMENTS INVENTORY
+Read-only observation report
+Generated: 2026-10-01
+
+Purpose
+-------
+This document records requirements inferred from a manually authenticated, read-only
+review of the Horizon UI. It does not include customer names, addresses, account values,
+or other personal/operational data displayed in the session.
+
+Safety and scope
+----------------
+- No credentials, cookies, or session tokens were collected or stored.
+- No forms were completed or submitted.
+- No work orders, appointments, records, configuration, account data, exports, downloads,
+  orders, migrations, or refunds were created, changed, approved, scheduled, or deleted.
+- The Book Inspection, Order, Logout, Profile child-settings, export/download links, and
+  refund controls were not opened or activated because they can change state or expose
+  sensitive data.
+
+Visited-page log
+----------------
+1. /authenticated/schedule/ScheduleDayViewX.aspx
+   Read-only schedule Day View inspection.
+2. /authenticated/schedule/ScheduleMonthView.aspx?D=10/1/2026
+   Read-only schedule Month View inspection.
+3. /authenticated/schedule/ScheduleMap.aspx?D=10/1/2026
+   Read-only Daily Map inspection. The application presented an informational message
+   when no mappable inspection was available for the selected date; it was dismissed.
+4. /authenticated/schedule/ScheduleWeekView.aspx?D=10/1/2026
+   Read-only schedule Week View inspection.
+5. /authenticated/inspections/Home.aspx
+   Read-only home dashboard inspection.
+6. /authenticated/company/MyProfile.aspx
+   Read-only Profile landing-page inspection.
+
+Global navigation requirements
+------------------------------
+The authenticated application provides these primary navigation items:
+- Home: open the work-order dashboard.
+- Scheduler: open the schedule or begin an inspection-booking workflow. This is a
+  potentially state-changing entry point and should require authorization.
+- Book Inspection: begin an inspection/work-order creation workflow; require
+  authorization and confirmation before creating data.
+- Profile: open company, inspector, report, integration, and work-order configuration.
+- Order: buy credits, subscribe, or renew a subscription; requires explicit confirmation.
+- Help: open contextual help.
+- Logout: end the authenticated session; requires confirmation.
+
+Schedule: Day View
+------------------
+Purpose: show a selected calendar day and support read-only navigation among schedule
+views.
+
+Observed requirements:
+- Display the selected weekday and date.
+- Provide Month View, Daily Map, and Week View selectors.
+- Provide Previous Day, Today, and Next Day controls.
+- Provide three adjacent monthly mini-calendars with selectable dates and previous/next
+  month navigation.
+- Provide Morning, Day, and Evening display segments.
+- Provide a legend/help affordance explaining schedule colors, letters, and codes.
+- Show the inspector/business schedule area for the selected date.
+
+Schedule: Month View
+--------------------
+Purpose: provide a whole-month schedule grid and calendar-period navigation.
+
+Observed requirements:
+- Display a month heading and a grid covering every day in the selected month.
+- Provide previous-month and next-month navigation.
+- Provide This Week and Today controls.
+- Provide month and year selectors, including historic and future periods.
+- Permit drill-down from a day in the month grid to that date's Day View.
+- Display schedule content in the context of the selected inspector/business.
+
+Schedule: Daily Map
+-------------------
+Purpose: present mappable inspections for the selected date.
+
+Observed requirements:
+- Display the selected date and its scheduled-inspection context.
+- Render scheduled inspection locations on a map when at least one valid mappable address
+  is available.
+- When no inspections exist or none have mappable addresses, present a clear,
+  informational no-data explanation without creating or changing schedule data.
+- Do not expose map data outside the authenticated user's authorization.
+
+Schedule: Week View
+-------------------
+Purpose: show a Monday-through-Sunday weekly schedule and workload summary.
+
+Observed requirements:
+- Display the week-start heading with previous-week and next-week navigation.
+- Provide Month View, This Week, and Today controls.
+- Display one selectable Day View link for each day of the week.
+- Display a weekly schedule grid in the inspector/business context.
+- Display aggregate workload metrics: total inspections, average inspections per day, and
+  total appointments for the week.
+- Where authorized, schedule entries may show appointment time, estimated duration,
+  location, and client information. Access to this personal/operational data must be
+  role-controlled.
+
+Home dashboard
+--------------
+Purpose: find and filter work orders, expose operational summary actions, and signal
+migration availability.
+
+Observed requirements:
+- Provide a Find text field for client, address, or report-number search and a Go action.
+- Provide inspector and work-order-status filters.
+- Support these observed status categories: all, works in progress, booked, in progress,
+  completed, and cancelled.
+- Provide Reset to clear filtering.
+- Show the number of work orders matching the active filters and an empty-state message
+  when none match.
+- Provide Business at a Glance and Accounts Receivable actions. Their permissions and
+  financial data must be role-controlled.
+- Provide a password-change action that requires reauthentication/secure confirmation.
+- Display subscription validity information only to authorized account users.
+- Display a Horizon-to-Spectora retirement/migration notice and a route to migration
+  settings. Migration must be explicit, reviewed, and consent-based.
+
+Profile landing page
+--------------------
+Purpose: organize administration and configuration functions. The observed landing page
+links to these requirement areas; the underlying settings pages were not opened.
+
+- Company information used on report title pages, cover letters, and invoices.
+- Inspector administration and inspector-access management.
+- Business-report/dashboard selection.
+- RecallChek, Google Calendar, and Inspection Support Network integrations.
+- Online payment processing configuration.
+- HomeBinder integration and report-publication workflow.
+- Work-order settings: typical duration, confirmation email, fees/taxes, discounts, and
+  displayed contract total.
+- Work-order dropdown lists, email wording, report wording, and address auto-suggestions.
+- Data export for agents, work orders, and reports. Exports/downloads must require an
+  authorized user and explicit confirmation.
+- Agent administration, usage information, and import management.
+- Online booking and automated event-triggered marketing email configuration.
+- Report action lists, title-page styling, tag lines, logos/images, page footer, summary
+  naming, photo/recommendation numbering, classifications, templates, and report-designer
+  document templates.
+- Billing, refund-request, and migration controls. These are high-risk workflows: require
+  role authorization, informed consent where applicable, validation, an explicit final
+  confirmation, audit logging, and clear success/failure messaging.
+
+Cross-cutting requirements
+--------------------------
+- Enforce authentication and role-based authorization for every module and sensitive
+  record.
+- Log navigation and all state-changing events with actor, timestamp, before/after state,
+  and outcome.
+- Clearly distinguish read-only navigation from actions that create, edit, publish,
+  integrate, export, purchase, migrate, refund, or delete.
+- Require explicit confirmation immediately before irreversible or financial actions.
+- Avoid placing client, address, billing, report, or integration credential data in
+  unprotected URLs, logs, or exports.
+- Provide accessible labels for fields and controls and useful empty/error states.
+- Preserve the selected inspector, date, and filter context while changing compatible
+  schedule views.
+
+Open validation items
+---------------------
+- Confirm the full booking workflow and its required fields with an authorized business
+  owner in a non-production or test account.
+- Confirm visibility and permissions for inspector, billing, export, integration,
+  migration, and refund functions by role.
+- Confirm schedule legend meanings, appointment statuses, and the difference between an
+  inspection and an appointment.
+- Confirm retention, audit, privacy, and consent requirements for client, address,
+  payment, report, and integration data.

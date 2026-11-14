@@ -1,0 +1,253 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.49.2.45890",
+      "templateHash": "6345206265114995127"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for the staging deployment."
+      }
+    },
+    "containerAppsEnvironmentName": {
+      "type": "string",
+      "defaultValue": "habitat-inspector-staging",
+      "metadata": {
+        "description": "Container Apps environment name."
+      }
+    },
+    "containerAppName": {
+      "type": "string",
+      "defaultValue": "habitat-api-staging",
+      "metadata": {
+        "description": "External-facing FastAPI Container App name."
+      }
+    },
+    "containerImage": {
+      "type": "string",
+      "metadata": {
+        "description": "A registry image that Azure Container Apps can pull, for example ghcr.io/OWNER/habitat-api:staging."
+      }
+    },
+    "keyVaultName": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing Key Vault name containing the six required staging secrets."
+      }
+    },
+    "oidcIssuerUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra External ID issuer URL from the API registration metadata."
+      }
+    },
+    "oidcAudience": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra API application ID URI, for example api://<application-client-id>."
+      }
+    },
+    "oidcJwksUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra External ID JWKS URL from the OpenID Connect discovery document."
+      }
+    },
+    "qwenCloudInferenceUrl": {
+      "type": "string",
+      "defaultValue": "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1/chat/completions",
+      "metadata": {
+        "description": "Qwen Cloud Singapore OpenAI-compatible chat-completions endpoint."
+      }
+    },
+    "browserCorsOrigin": {
+      "type": "string",
+      "defaultValue": "https://staging.example.com",
+      "metadata": {
+        "description": "CORS origin for a browser staging client. Native mobile apps do not use CORS."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('containerAppsEnvironmentName')]",
+      "location": "[parameters('location')]",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('containerAppName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvironmentName'))]",
+        "configuration": {
+          "activeRevisionsMode": "Single",
+          "ingress": {
+            "external": true,
+            "targetPort": 8000,
+            "transport": "http"
+          },
+          "secrets": [
+            {
+              "name": "supabase-url",
+              "keyVaultUrl": "[format('{0}secrets/supabase-url', reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2023-07-01').vaultUri)]",
+              "identity": "system"
+            },
+            {
+              "name": "supabase-service-role-key",
+              "keyVaultUrl": "[format('{0}secrets/supabase-service-role-key', reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2023-07-01').vaultUri)]",
+              "identity": "system"
+            },
+            {
+              "name": "dashscope-api-key",
+              "keyVaultUrl": "[format('{0}secrets/dashscope-api-key', reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2023-07-01').vaultUri)]",
+              "identity": "system"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "habitat-api",
+              "image": "[parameters('containerImage')]",
+              "resources": {
+                "cpu": "[json('0.5')]",
+                "memory": "1Gi"
+              },
+              "env": [
+                {
+                  "name": "APP_ENV",
+                  "value": "staging"
+                },
+                {
+                  "name": "PERSISTENCE_BACKEND",
+                  "value": "supabase"
+                },
+                {
+                  "name": "SUPABASE_URL",
+                  "secretRef": "supabase-url"
+                },
+                {
+                  "name": "SUPABASE_SERVICE_ROLE_KEY",
+                  "secretRef": "supabase-service-role-key"
+                },
+                {
+                  "name": "SUPABASE_STORAGE_BUCKET",
+                  "value": "inspection-evidence"
+                },
+                {
+                  "name": "INFERENCE_PROVIDER",
+                  "value": "qwen_cloud"
+                },
+                {
+                  "name": "ENABLE_REMOTE_INFERENCE",
+                  "value": "true"
+                },
+                {
+                  "name": "DASHSCOPE_API_KEY",
+                  "secretRef": "dashscope-api-key"
+                },
+                {
+                  "name": "QWEN_CLOUD_INFERENCE_URL",
+                  "value": "[parameters('qwenCloudInferenceUrl')]"
+                },
+                {
+                  "name": "QWEN_CLOUD_MODEL_ID",
+                  "value": "qwen3.7-flash"
+                },
+                {
+                  "name": "QWEN_CLOUD_MODEL_VERSION",
+                  "value": "qwen-cloud-managed"
+                },
+                {
+                  "name": "OIDC_ISSUER_URL",
+                  "value": "[parameters('oidcIssuerUrl')]"
+                },
+                {
+                  "name": "OIDC_AUDIENCE",
+                  "value": "[parameters('oidcAudience')]"
+                },
+                {
+                  "name": "OIDC_JWKS_URL",
+                  "value": "[parameters('oidcJwksUrl')]"
+                },
+                {
+                  "name": "BROWSER_CORS_ORIGIN",
+                  "value": "[parameters('browserCorsOrigin')]"
+                }
+              ],
+              "probes": [
+                {
+                  "type": "Startup",
+                  "httpGet": {
+                    "path": "/health",
+                    "port": 8000
+                  },
+                  "initialDelaySeconds": 5,
+                  "periodSeconds": 10,
+                  "failureThreshold": 18
+                },
+                {
+                  "type": "Liveness",
+                  "httpGet": {
+                    "path": "/health",
+                    "port": 8000
+                  },
+                  "periodSeconds": 30
+                },
+                {
+                  "type": "Readiness",
+                  "httpGet": {
+                    "path": "/health",
+                    "port": 8000
+                  },
+                  "periodSeconds": 10
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 0,
+            "maxReplicas": 3
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvironmentName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '4633458b-17de-408a-b874-0445c86b69e6')]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/containerApps', parameters('containerAppName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "apiUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01').configuration.ingress.fqdn)]"
+    }
+  }
+}

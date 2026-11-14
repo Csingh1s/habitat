@@ -1,0 +1,232 @@
+AI PHOTO-TO-REPORT AUTOMATION SPECIFICATION
+Generated: 2026-10-01
+
+1. Principle
+------------
+The system must not let an AI model "inspect a house" by itself. AI converts uploaded
+evidence into a structured, reviewable report draft. A licensed/authorized inspector remains
+responsible for deciding whether an issue exists, its severity, recommendation, and whether
+the report is published.
+
+Each AI draft must show:
+- the source photo(s), voice note, measurement, or checklist response;
+- detected component and issue candidate;
+- confidence/uncertainty;
+- suggested report location and wording;
+- inspector decision: accept, edit, reject, or mark "needs site verification";
+- AI model/version and time of generation.
+
+2. Existing report-workspace pattern
+------------------------------------
+The inspected Horizon Report Writing workspace is structured around reusable report items,
+not only blank text. It includes:
+- Photo loading and gallery controls.
+- Required-item/completion checks.
+- Templates and database search.
+- Report-item repetition, customization, and creation.
+- Item/section hide-show controls.
+- Preview and a separate report publishing/generation/sending action.
+- Work-order and mobile-log navigation.
+
+The visible template item controls include component-specific choices and standardized
+material/condition wording. For example, the currently visible roof-related template covers
+roof direction/orientation, roof-covering material, roof membrane material, flashing
+material, roof-slope descriptors, age ranges, repeated items, and blank custom items.
+
+The replacement must retain this structured template model. AI should fill a structured item
+proposal, then derive readable report wording from approved items. It must not replace the
+underlying inspection data with one opaque generated paragraph.
+
+3. Recommended inspection taxonomy
+----------------------------------
+Use company-configurable service templates. A standard home-inspection template should
+support at least:
+
+1. Site and exterior
+   - grading, drainage, driveway, walkways, decks, porches, railings, stairs, exterior
+     cladding, windows, doors, flashing, eaves, gutters, downspouts, vegetation.
+2. Roofing
+   - roof covering, slopes, valleys, penetrations, flashing, skylights, chimneys, gutters,
+     drainage, visible damage, age/material, safety/access limitations.
+3. Structure, foundation, and crawlspace
+   - foundation walls, slabs, framing, beams, columns, settlement indications, moisture,
+     drainage, crawlspace access/ventilation/insulation.
+4. Attic, insulation, and ventilation
+   - attic access, insulation type/depth, ventilation, roof framing, moisture staining,
+     wiring, bathroom fan termination.
+5. Electrical
+   - service entrance, meter, panel, breakers, grounding/bonding, branch wiring, outlets,
+     GFCI/AFCI where applicable, fixtures, visible hazards.
+6. Plumbing
+   - supply piping, drain/waste/vent piping, fixtures, water heater, visible leaks,
+     shutoffs, sump pump, water pressure observations, fuel/gas piping where applicable.
+7. Heating, cooling, and ventilation
+   - furnace/boiler, heat pump, air conditioner, distribution, thermostats, filters,
+     condensate, combustion venting, visible labels and maintenance indicators.
+8. Interior
+   - walls, ceilings, floors, windows, doors, stairs, handrails, kitchen, bathroom,
+     laundry, ventilation, visible moisture/finish concerns.
+9. Fireplace and solid-fuel equipment
+   - hearth, firebox, chimney visible areas, damper, clearance, visible safety conditions.
+10. Appliances
+   - installed appliances, visible labels, basic operating observations, connection
+     condition, and limitations.
+11. Safety and limitations
+   - inaccessible areas, unsafe conditions, missing safety equipment, and scope limits.
+
+Every company must be able to add, rename, reorder, hide, and require categories/items.
+
+4. What the AI does for each uploaded photo
+--------------------------------------------
+Step 1: Quality gate
+- Detect blur, darkness, low resolution, obstruction, overexposure, duplicates, and
+  insufficient framing.
+- Return "retake photo" guidance before attempting a finding.
+
+Step 2: Component recognition
+- Detect likely component(s), such as roof covering, electrical panel, outlet, water heater,
+  furnace, air conditioner, foundation wall, window, stair/railing, plumbing fixture, or
+  attic insulation.
+- Suggest a taxonomy category and report item. Do not silently assign it.
+
+Step 3: Visible-condition candidate
+- Identify visually apparent cues only: staining, corrosion, cracking, missing cover,
+  damaged surface, disconnected duct, water evidence, improper clearance, exposed wiring,
+  missing handrail, or other configured visual patterns.
+- Distinguish "visible indicator" from a diagnosis. For example: "possible moisture staining
+  visible" is valid; "active roof leak" requires inspector confirmation/evidence.
+
+Step 4: Evidence marker
+- Store normalized bounding boxes/polygons for the detected component or concern.
+- Display a marker on the image, with a stable marker ID and an inspector-editable label.
+- Support multiple markers per photo and many photos per observation.
+
+Step 5: Draft item
+- Create a proposed observation record:
+  category, component, location, visible indicator, suggested classification, proposed
+  standardized wording, evidence IDs, confidence, and "requires human review" status.
+- If the model lacks sufficient evidence, create a missing-information task rather than a
+  finding.
+
+5. Mobile UI behavior
+---------------------
+After photo capture, show:
+
+Photo
+  -> AI suggests: "Electrical > Main panel"
+  -> Marker: "Possible unprotected opening"
+  -> Buttons: Accept category | Change category | Add note | Retake | Ignore AI
+  -> Draft: "An opening was visible at the electrical panel. Recommend evaluation and repair
+     by a qualified electrician."
+  -> Buttons: Accept draft | Edit | Reject | Needs verification
+
+The inspector must be able to:
+- draw, move, resize, hide, or delete AI markers;
+- choose the component/category manually;
+- dictate or type an alternative note;
+- link the photo to an existing report item;
+- mark the photo as contextual/not a defect;
+- work fully offline;
+- see upload, processing, AI-draft, review, and sync states.
+
+6. Report-generation pipeline
+-----------------------------
+1. Upload photo and create immutable MediaAsset with checksum, capture time, device ID, and
+   optional sanitized location metadata.
+2. Create thumbnails and run malware scanning.
+3. Send a minimized, tenant-scoped image/context package to the vision/OCR pipeline.
+4. Write AI results as AISuggestion records; do not modify the report draft directly.
+5. Inspector accepts/edits/rejects suggestions.
+6. Accepted suggestions create or update ReportItem/Observation records with EvidenceLink
+   records.
+7. Rules engine performs deterministic validation:
+   required categories, required photos, unsupported recommendation, missing location,
+   missing severity, duplicate observation, and contradictory limitation/finding.
+8. Text-generation service renders only approved structured observations into the selected
+   company template.
+9. Inspector/reviewer runs Preview.
+10. Authorized reviewer validates and publishes an immutable report revision.
+
+7. Models and technical approach
+--------------------------------
+Use a pipeline, not one general chat prompt:
+
+- Vision quality model: blur, brightness, duplicate/near-duplicate, framing.
+- Component detector/segmenter: identifies major building systems and produces bounding
+  boxes/masks.
+- OCR model: labels, serial/model numbers, electrical-panel markings, equipment data plates.
+- Multimodal model: converts inspector notes plus approved detected evidence into a proposed
+  observation; it must be constrained by the template schema.
+- Rules engine: deterministic company/jurisdiction requirements and report completeness.
+- Retrieval layer: company-approved template language, disclaimers, classification wording,
+  and service-specific guidance. Never retrieve another tenant's data.
+- Human review layer: the only source of accepted observations and final publication.
+
+Prefer JSON-schema outputs from the AI service, for example:
+
+{
+  "category": "electrical",
+  "component": "service panel",
+  "location": "garage",
+  "visible_indicators": ["unprotected opening"],
+  "suggested_classification": "repair",
+  "evidence": [{"media_asset_id": "photo-uuid", "marker_id": "marker-uuid"}],
+  "draft_wording": "An opening was visible at the service panel.",
+  "recommendation": "Have a qualified electrician evaluate and repair as needed.",
+  "confidence": 0.71,
+  "requires_human_review": true
+}
+
+Do not allow an AI response to create a published report, invoice, appointment, or external
+message directly.
+
+8. Automation list
+------------------
+Safe to automate after configuration:
+- Media checksum, duplicate detection, thumbnail generation, malware scan, upload retry.
+- Photo-quality feedback.
+- Component/category suggestions.
+- OCR extraction into a reviewable structured field.
+- Caption and draft-observation suggestions.
+- Report-section assignment suggestions.
+- Missing-photo/missing-item/completeness warnings.
+- Duplicate/contradictory-observation warnings.
+- Approved-template wording formatting.
+- Draft summary and draft client-email text.
+- Scheduling duration/travel suggestions and reminder drafts.
+
+Must require a human decision:
+- Accepting a defect/condition conclusion.
+- Selecting severity and recommendation.
+- Diagnosing a system from uncertain or incomplete evidence.
+- Changing a work-order status to complete.
+- Approving a report.
+- Publishing, sending, or sharing a report.
+- Charging a payment method, issuing a refund, exporting data, or deleting records.
+
+9. Training, evaluation, and rollout
+-------------------------------------
+- Start with 3-5 high-volume categories such as roofing, electrical panels, HVAC equipment,
+  water heaters, and exterior/interior damage—not every component at once.
+- Build a consented, de-identified evaluation set with inspector-reviewed labels,
+  components, marker locations, and final wording.
+- Measure component precision/recall, photo-quality accuracy, marker overlap, missing-item
+  recall, AI acceptance/edit/rejection rate, and false-positive safety findings.
+- Release in shadow mode first: AI produces suggestions visible to reviewers but cannot alter
+  report records.
+- Pilot with selected inspectors, then expand only when measured accuracy and review burden
+  meet agreed thresholds.
+- Retain a manual-only workflow for every feature and permit company-level AI opt-out.
+
+10. Safety, legal, and privacy requirements
+--------------------------------------------
+- Explain to inspectors that AI suggestions require professional review.
+- Show uncertainty and missing-evidence states rather than inventing a conclusion.
+- Keep original media, generated marker, prompt version, AI result, human changes, and final
+  wording in a traceable audit chain.
+- Redact or minimize client names, addresses, payment data, and unrelated report content
+  before AI processing.
+- Use tenant isolation, encrypted storage/transit, provider retention controls, and
+  no-training-on-customer-data contractual terms.
+- Perform jurisdiction-specific legal/compliance review before any automated recommendation
+  wording is released.

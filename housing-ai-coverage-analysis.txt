@@ -1,0 +1,369 @@
+HOUSING INSPECTION AI COVERAGE AND ACCURACY VALIDATION
+Builder implementation specification
+Generated: 2026-10-04
+
+1. Scope and evidence
+---------------------
+This document maps the home-inspection systems visible in the authenticated Horizon report
+workspace to safe AI assistance and mandatory human review.
+
+Verified Horizon report categories:
+1. Roofing
+2. Exterior
+3. Structure
+4. Electrical
+5. Heating
+6. Cooling
+7. Insulation
+8. Plumbing
+9. Interior
+
+Verified report classifications:
+- Description
+- Limitations
+- Recommendations
+
+Verified Roofing template concepts:
+- home orientation;
+- sloped/flat roofing material;
+- sloped/flat flashing material;
+- roof shape;
+- probability of leakage;
+- approximate age and typical life expectancy;
+- private notes;
+- controlled materials such as asphalt/composition/wood shingles, concrete/clay tile,
+  fiber cement, slate, metal, roll roofing, modified bitumen, and built-up membrane.
+
+The shared report's remaining category tabs require server-side inspection context that is not
+preserved by direct read-only navigation. This document therefore uses the verified nine-system
+taxonomy and clearly separates: (a) observed Horizon structure, and (b) proposed implementation
+coverage. It does not reveal any client report content, property address, photo, or finding.
+
+2. Non-negotiable accuracy statement
+------------------------------------
+DO NOT promise "perfect accuracy."
+
+There is no valid universal accuracy rate for home-inspection AI. Accuracy changes by:
+- system category;
+- photo quality, light, angle, and distance;
+- house age, construction type, weather, and equipment;
+- model/version;
+- whether the task is object recognition, OCR, visible-cue detection, or diagnosis;
+- the definition of a true issue;
+- inspector labels and reviewer agreement.
+
+The production product must state:
+"AI assists with evidence organization and draft wording. A qualified inspector reviews and
+approves all findings before publication."
+
+The product must never state:
+"AI accurately diagnoses every home defect" or "AI produces a complete inspection report
+without human review."
+
+3. Automation levels
+--------------------
+Level 1: deterministic software
+- No model judgment. Use rules, image processing, checksums, and validation.
+
+Level 2: AI suggestion
+- AI suggests a component/category/caption/OCR value. Inspector can correct it.
+
+Level 3: AI review candidate
+- AI identifies a visible cue and marks it in a photo. Inspector decides whether it is a
+  concern, defect, limitation, or irrelevant.
+
+Level 4: human-only conclusion
+- Qualified inspector decides functional condition, cause, safety, code relevance, severity,
+  recommendation, and final report content.
+
+4. System-by-system AI coverage
+--------------------------------
+
+4.1 Roofing
+Observed Horizon scope:
+- roof shape, orientation, sloped/flat materials, flashing, approximate age/life expectancy,
+  leakage probability, limitations, and recommendations.
+
+AI can assist well (Level 2):
+- photo quality and duplicate detection;
+- distinguish roof surface, flashing, chimney, skylight, gutter, downspout, valley, vent,
+  and roof-edge context;
+- suggest visible covering material;
+- suggest orientation when phone direction/context is reliable;
+- OCR labels where present;
+- draft neutral photo captions;
+- identify possible visible missing/damaged surface material, debris, or discoloration;
+- flag missing required roof views according to the company checklist.
+
+AI can flag only (Level 3):
+- possible missing/damaged shingle or tile;
+- possible exposed fastener;
+- possible deteriorated flashing;
+- possible ponding/debris/wear cue;
+- possible staining or roof-surface irregularity.
+
+Inspector must decide (Level 4):
+- whether the roof leaks;
+- whether deterioration is active/material;
+- remaining life expectancy;
+- whether repair or replacement is needed;
+- source of moisture;
+- access limitations and safety;
+- final probability of leakage and recommendation.
+
+4.2 Exterior
+Proposed scope:
+- site drainage, grading, cladding/siding, trim, windows, doors, decks, porches, stairs,
+  guards/handrails, driveways/walkways, gutters/downspouts, vegetation, and visible flashing.
+
+AI can assist well:
+- identify common exterior component categories;
+- classify photo as siding/window/door/deck/stair/gutter/driveway;
+- detect obvious missing handrail candidate, visible surface damage, paint deterioration,
+  staining, or obstruction candidate;
+- suggest material/caption and required-photo coverage.
+
+Inspector must decide:
+- water-management effectiveness and grade/drainage condition;
+- rot extent, weatherproofing, structural attachment, window/door operation;
+- safety/code relevance of railings/guards;
+- cause and significance of cracking/damage;
+- recommendation.
+
+4.3 Structure
+Proposed scope:
+- foundation walls, slabs, framing, beams, columns, crawlspace, settlement signs, visible
+  moisture, and structural access limitations.
+
+AI can assist well:
+- identify foundation wall, slab, beam, column, framing, crawlspace, and insulation context;
+- locate/mark a visible crack, stain, spall, or surface irregularity;
+- organize evidence photos by area.
+
+AI can flag only:
+- possible crack/linear feature;
+- possible moisture staining;
+- possible surface deterioration;
+- possible unsupported/altered framing cue.
+
+Inspector must decide:
+- structural significance;
+- active movement versus cosmetic cracking;
+- moisture source;
+- whether specialist evaluation is needed;
+- safety and repair recommendation.
+
+Structure is a high-risk category. No AI visual cue may become a defect or safety conclusion
+without inspector review.
+
+4.4 Electrical
+Proposed scope:
+- service entrance, meter, panel, breakers, labeling, grounding/bonding, branch wiring,
+  outlets, switches, fixtures, GFCI/AFCI checks, and visible hazards.
+
+AI can assist well:
+- identify panel/outlet/switch/meter/fixture images;
+- OCR clear panel labels, manufacturer/model markings, and visible text;
+- detect possible missing cover, open knockout, exposed conductor, corrosion, or labeling
+  irregularity;
+- organize photos by electrical item.
+
+Inspector must decide:
+- electrical safety;
+- whether a condition is code-relevant or defective;
+- panel capacity, grounding/bonding correctness, GFCI/AFCI requirements;
+- whether circuits function;
+- recommendation and urgency.
+
+Electrical requires human review for every AI-visible-cue flag.
+
+4.5 Heating
+Proposed scope:
+- furnace, boiler, heat pump, distribution, thermostat, filter, condensate, combustion
+  venting, fuel connection, labels, visible condition, and functional observations.
+
+AI can assist well:
+- identify major equipment category;
+- OCR model/serial/manufacturer labels;
+- suggest photo caption and report section;
+- flag visible corrosion, disconnected duct/vent candidate, missing filter candidate, or
+  visible condensate issue candidate.
+
+Inspector must decide:
+- operation/performance;
+- combustion safety;
+- venting compliance;
+- maintenance, repair, replacement, and life-expectancy conclusion;
+- diagnostic tests and recommendation.
+
+4.6 Cooling
+Proposed scope:
+- condenser, evaporator/air handler, refrigerant-line insulation, disconnect, condensate,
+  thermostat, distribution, labels, and operation.
+
+AI can assist well:
+- identify condenser/air-handler/thermostat;
+- OCR labels;
+- detect obvious exterior damage, vegetation obstruction candidate, missing line insulation
+  candidate, or visible corrosion;
+- capture required equipment photos.
+
+Inspector must decide:
+- cooling operation, refrigerant condition, capacity, electrical safety, airflow, leakage,
+  and repair/replacement recommendation.
+
+4.7 Insulation and ventilation
+Proposed scope:
+- attic/crawlspace access, insulation type/depth, ventilation, roof framing, moisture
+  staining, wiring, and bathroom-fan termination.
+
+AI can assist well:
+- identify attic, insulation, exposed framing, vent, and visible wiring;
+- suggest insulation category (for example batt/loose-fill) when image quality is sufficient;
+- flag visible dark staining, disconnected duct candidate, or insulation coverage gaps;
+- identify missing expected attic/insulation photos.
+
+Inspector must decide:
+- insulation R-value/depth accuracy;
+- adequacy of ventilation;
+- moisture source;
+- air-sealing quality;
+- unsafe wiring or inaccessible-area conclusion.
+
+4.8 Plumbing
+Proposed scope:
+- supply/drain/waste/vent piping, fixtures, water heater, shutoffs, sump pump, visible leaks,
+  fuel/gas piping where applicable, and functional observations.
+
+AI can assist well:
+- identify sink, toilet, faucet, pipe, water heater, valve, sump pump, and visible labels;
+- OCR equipment labels;
+- flag possible corrosion, moisture staining, drip, or missing connection candidate;
+- route photos to plumbing/water-heater report item.
+
+Inspector must decide:
+- whether moisture indicates an active leak;
+- water pressure, drainage performance, shutoff operation, venting, fuel/gas safety;
+- hidden-piping condition;
+- repair scope/urgency and recommendation.
+
+4.9 Interior
+Proposed scope:
+- walls, ceilings, floors, windows, doors, stairs, railings, kitchens, bathrooms, laundry,
+  installed appliances, ventilation, and visible finish/moisture concerns.
+
+AI can assist well:
+- classify room/component;
+- identify appliance/window/door/stair/railing/sink/toilet/cabinet;
+- caption photos;
+- flag a visible crack, stain, missing handrail candidate, damaged finish, or accessible
+  appliance label;
+- suggest report section/item and identify missing room coverage.
+
+Inspector must decide:
+- functional operation of windows/doors/appliances;
+- source/significance of stains/cracks;
+- water intrusion;
+- safety/egress/accessibility/code implications;
+- recommendation.
+
+5. Accuracy measurement by task
+--------------------------------
+Measure task performance separately. Never combine these into one "home inspection accuracy"
+number.
+
+| Task | Measure | Example decision |
+|---|---|---|
+| Photo quality | precision, recall, false reject rate | ask user to retake or proceed |
+| Duplicate photo | precision/recall of duplicate pairs | flag only; inspector can retain |
+| Category routing | top-1 and top-3 accuracy | suggest report section |
+| Component recognition | precision/recall by component | suggest panel, water heater, roof, etc. |
+| OCR | field/character accuracy | editable label value |
+| Visual marker | IoU/overlap with inspector-marked region | display review marker |
+| Visible-cue flag | precision, recall, false-positive rate, missed-cue rate | create review candidate only |
+| Draft wording | inspector accept/edit/reject rate | show editable wording |
+| Completeness warning | true warning/false warning rate | warn, never auto-block without rule |
+| Summary | reviewer correction rate | editable summary only |
+
+Formula definitions:
+- Precision = true positives / all positive AI flags.
+- Recall = true positives / all issues labeled in the evaluation set.
+- False-positive rate = non-issues flagged / all non-issues.
+- Missed-cue rate = labeled visible cues not flagged / all labeled visible cues.
+- Acceptance rate = accepted unchanged / all AI suggestions.
+
+6. Accuracy program before production
+--------------------------------------
+1. Build a consented, de-identified, inspector-reviewed photo dataset.
+2. Label every photo with:
+   - category/component;
+   - whether a visible cue exists;
+   - exact marker/region;
+   - final inspector interpretation;
+   - limitations and confidence;
+   - approved report wording where applicable.
+3. Split data by property, not photo, into training/tuning, validation, and held-out test
+   sets. Photos from the same home must not appear in both training and test sets.
+4. Test separately for Roofing, Exterior, Structure, Electrical, Heating, Cooling,
+   Insulation, Plumbing, and Interior.
+5. Test different lighting, device cameras, seasons, home ages, materials, distances, and
+   difficult/obstructed views.
+6. Compare models and prompts using the held-out set before any production launch.
+7. Run shadow mode: AI creates suggestions, but cannot modify report records. Inspectors
+   review and label the quality.
+8. Run a limited pilot with audit review every week.
+9. Release individual tasks/categories only when product, quality, and safety owners approve
+   the measured results.
+10. Continuously monitor drift, false positives, missed cues, edit/reject rate, published
+    report amendments, and client/inspector complaints.
+
+7. Release rules by risk
+-----------------------
+Low-risk tasks may launch after measured quality review:
+- photo quality;
+- duplicate detection;
+- OCR as editable draft;
+- category/component suggestion;
+- captions;
+- draft wording from inspector-approved structured data.
+
+Medium-risk tasks must launch in shadow mode and remain inspector-reviewed:
+- photo markers;
+- visible-cue flags;
+- missing-photo/completeness warnings;
+- report-item suggestions.
+
+High-risk tasks must never be automatic:
+- structural, electrical, plumbing, roofing, heating/cooling, safety, or code conclusions;
+- severity and recommendation;
+- report approval/publishing/delivery.
+
+8. Production client-delivery controls
+--------------------------------------
+Before a client receives a report, enforce:
+- all required items completed or waived with inspector reason;
+- all photo uploads/media processing completed;
+- all "needs verification" observations resolved;
+- no unresolved AI/model/system error;
+- inspector review of every accepted AI-assisted item;
+- report preview generated from the exact publish revision;
+- qualified inspector approval;
+- optional second quality reviewer based on company policy/risk;
+- explicit publish confirmation;
+- explicit recipient/delivery confirmation;
+- immutable audit record of evidence, AI suggestion, human decision, publish revision, and
+  delivery event.
+
+9. Builder acceptance criteria
+------------------------------
+1. Model output is always a draft and cannot directly create a published finding.
+2. Every AI-assisted observation retains source-photo IDs and editable markers.
+3. The inspector can reject all AI output and complete the report manually.
+4. The API blocks publication unless an authorized human approves the exact report revision.
+5. The API blocks client delivery unless the report is published and delivery is separately
+   confirmed.
+6. Accuracy dashboards show metrics by system category and task, not one overall percentage.
+7. The product records model/version, prompt/template version, source evidence, AI output,
+   inspector action, final wording, and post-publication amendments.
+8. Any model/category can be disabled immediately without preventing manual inspection or
+   report completion.

@@ -1,0 +1,93 @@
+HORIZON BILLING AND FINANCE REQUIREMENTS
+Read-only observation report
+Generated: 2026-10-01
+
+Scope
+-----
+Inspected without selecting subscription options, entering card data, submitting a payment,
+submitting a refund, generating an invoice, or downloading/exporting data.
+
+Observed access boundaries
+--------------------------
+- The shared role can open the subscription-management screen.
+- The shared role is denied access to Accounts Receivable and card-processor configuration.
+- Export/download and tax-report routes were not opened to prevent sensitive-data download.
+- The replacement must enforce finance-specific authorization independently of general
+  authenticated access and report authoring.
+
+Subscription management
+-----------------------
+Observed capabilities:
+- Show subscription records by user.
+- Show signup and expiry context.
+- Choose no subscription change or an annual extension.
+- Open monthly-payment editing.
+- Continue to a separate card-information step.
+
+Requirements:
+- Treat selection as a draft only; no renewal/change occurs until a clear final confirmation.
+- Calculate pricing, discounts, credits, taxes, and effective date server-side.
+- Show a review screen before external payment collection.
+- Use hosted payment fields/checkout from a PCI-compliant processor; never accept, store,
+  log, or expose raw payment-card or bank-account data.
+- Persist provider token/reference, payment status, amount/currency, invoice reference, and
+  idempotency key only after verified processor confirmation.
+- Handle success, decline, cancellation, timeout, duplicate click, webhook retry, and
+  reconciliation explicitly.
+- Maintain subscription status history and notify authorized users before expiry, after
+  renewal, and on payment failure.
+
+Invoices, credits, receivables, and taxes
+-----------------------------------------
+- Support immutable invoices, invoice revisions, credit notes, payment allocations, and a
+  subscription/credit ledger.
+- Keep invoice states: draft, issued, delivered, partially paid, paid, overdue, void,
+  written off, and refunded.
+- Restrict receivables and financial dashboards to finance roles.
+- Provide aging, balances, customer/work-order linkage, collection status, and controlled
+  export only to authorized users.
+- Support tax configuration with jurisdiction, rate/version, effective dates, exemptions,
+  rounding, and invoice-time snapshots.
+- Require explicit confirmation, audit logging, and short-lived protected links for any
+  financial report/export/download.
+
+Discount administration
+-----------------------
+The profile inventory exposed invoice-discount administration with create/edit actions.
+
+Requirements:
+- Named discount rules with effective dates and active/inactive state.
+- Fixed/percentage calculation, eligibility criteria, stacking/exclusivity policy, and
+  maximum use constraints.
+- Server-side calculation and audit trail for every applied discount.
+- Historical invoice discounts must remain immutable after issue.
+
+Refund request workflow
+-----------------------
+Observed form concepts:
+- Category: annual subscription, monthly subscription, or prepaid credits.
+- Most-recent purchase date.
+- Requested subscription/credit end date.
+- Reason and required acknowledgements.
+
+Requirements:
+1. Validate required fields both client-side and server-side.
+2. Create a pending refund request, never an immediate refund.
+3. Record requester, category, supporting reason, relevant purchase references, requested
+   end date, and acknowledgement versions.
+4. Apply refund-window/policy rules and route exceptions to authorized review.
+5. Require finance approval/rejection with reviewer identity, decision reason, and audit
+   timestamp.
+6. Execute a provider refund only after approval; reconcile webhook confirmation.
+7. Create a matching immutable ledger reversal/credit note and notify the requester.
+8. Prevent duplicate requests/refunds through idempotency and status locking.
+
+Audit and security
+------------------
+- Log finance navigation, quote calculation, subscription selections, confirmation,
+  payment-provider events, invoice changes, export generation, refund decisions, and
+  ledger movements.
+- Do not log card data, authentication tokens, full account identifiers, or unnecessary
+  personal/financial data.
+- Use least-privilege roles, step-up authentication for high-value/refund/export actions,
+  secure secrets storage, encrypted data, and monitoring/reconciliation alerts.

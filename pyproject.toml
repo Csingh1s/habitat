@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "horizon-requirements-explorer"
+version = "0.1.0"
+description = "Read-only browser-session inventory and requirements reporting for Horizon."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["playwright>=1.48,<2", "pypdf>=5,<7"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[project.scripts]
+horizon-explorer = "horizon_explorer.cli:main"
+tarion-draft = "tarion_agent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/horizon_explorer", "src/tarion_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
