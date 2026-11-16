@@ -1,8 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,10 @@ DEVELOPMENT_DEMO_USER_ID = "demo-inspector"
 
 class Settings(BaseSettings):
     app_env: str = "development"
+    development_login_email: str = "inspector@example.com"
+    development_login_password: SecretStr = SecretStr("HabitatDemo123!")
+    development_admin_email: str = "admin@example.com"
+    development_admin_password: SecretStr = SecretStr("HabitatAdmin12345")
     oidc_issuer_url: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
@@ -20,16 +25,17 @@ class Settings(BaseSettings):
     qwen_inference_api_key: str | None = None
     qwen_model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct"
     qwen_model_version: str = "deployment-managed"
-    inference_provider: Literal["self_hosted", "qwen_cloud"] = "self_hosted"
-    qwen_cloud_inference_url: str = (
-        "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1/chat/completions"
-    )
+    inference_provider: Literal["self_hosted", "qwen_cloud"] = "qwen_cloud"
+    alibaba_model_studio_host: str | None = None
+    qwen_cloud_inference_url: str | None = None
     qwen_cloud_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("QWEN_CLOUD_API_KEY", "DASHSCOPE_API_KEY"),
     )
     qwen_cloud_model_id: str = "qwen3.7-flash"
     qwen_cloud_model_version: str = "qwen-cloud-managed"
+    alibaba_speech_model_id: str = "qwen-audio-3.1-asr-flash"
+    alibaba_speech_file_model_id: str = "qwen-audio-3.1-asr-flash-filetrans"
     enable_remote_inference: bool = False
     persistence_backend: Literal["memory", "supabase"] = "memory"
     inference_execution_mode: Literal["background", "worker"] = "background"
@@ -48,6 +54,21 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("alibaba_model_studio_host")
+    @classmethod
+    def validate_alibaba_host(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or not (parsed.hostname or "").endswith(".maas.aliyuncs.com")
+            or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or parsed.path not in {"", "/"} or parsed.port not in {None, 443}
+        ):
+            raise ValueError("ALIBABA_MODEL_STUDIO_HOST must be the HTTPS workspace host from Model Studio, without an API path.")
+        return value.rstrip("/")
 
     @property
     def development_identity_enabled(self) -> bool:

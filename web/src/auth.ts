@@ -47,3 +47,35 @@ export async function signOut(): Promise<void> {
   const instance = await client()
   await instance.logoutPopup({ account: instance.getActiveAccount() ?? instance.getAllAccounts()[0], mainWindowRedirectUri: window.location.origin })
 }
+
+const developmentSessionKey = 'habitat-development-email'
+
+export function hasDevelopmentSession(): boolean {
+  return import.meta.env.DEV && Boolean(sessionStorage.getItem(developmentSessionKey))
+}
+
+export async function signInDevelopment(email: string, password: string): Promise<void> {
+  if (!import.meta.env.DEV) throw new Error('Local account sign-in is unavailable in this build.')
+  let response: Response
+  try {
+    response = await fetch('/api/development/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), password }), signal: AbortSignal.timeout(15_000),
+    })
+  } catch {
+    throw new Error('The local API could not be reached. Check the API on port 8001 and retry.')
+  }
+  const result: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    const detail = result && typeof result === 'object' && 'detail' in result ? result.detail : null
+    throw new Error(typeof detail === 'string' ? detail : 'Sign-in could not be completed. Try again.')
+  }
+  if (!result || typeof result !== 'object' || !('authenticated' in result) || result.authenticated !== true || !('email' in result) || typeof result.email !== 'string') {
+    throw new Error('The API returned an unexpected sign-in response.')
+  }
+  sessionStorage.setItem(developmentSessionKey, result.email)
+}
+
+export function signOutDevelopment(): void {
+  if (import.meta.env.DEV) sessionStorage.removeItem(developmentSessionKey)
+}

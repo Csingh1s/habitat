@@ -38,7 +38,7 @@ function ReviewEditor({ media, analysis, previous, busy, save }: { media: Media;
   const [category, setCategory] = useState(previous?.category ?? candidate?.category_candidate ?? media.requested_category ?? '')
   const [location, setLocation] = useState(previous?.location ?? '')
   const [caption, setCaption] = useState(previous?.caption ?? candidate?.draft_caption ?? '')
-  const [observation, setObservation] = useState(previous?.observation ?? candidate?.draft_observation ?? media.inspector_note ?? '')
+  const [observation, setObservation] = useState(previous?.observation ?? media.inspector_note ?? candidate?.draft_observation ?? '')
   const [decision, setDecision] = useState<ReviewInput['decision']>(previous?.decision ?? 'needs_verification')
   const key = useRef<{ signature: string; id: string } | null>(null)
   async function submit(event: React.FormEvent) {

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, SecretStr, field_validator
 
 
 def utc_now() -> datetime:
@@ -63,6 +65,31 @@ class DevelopmentDemoInspectionResponse(BaseModel):
     user_id: str
     address: str
     environment: str
+
+
+class DevelopmentLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=3, max_length=254)
+    password: SecretStr = Field(min_length=1, max_length=128)
+
+
+class ShortTranscriptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    audio_base64: str = Field(min_length=4, max_length=7_000_000)
+    audio_format: Literal["aac", "amr", "flac", "m4a", "mp3", "ogg", "opus", "wav"]
+    sample_rate: int = Field(ge=8_000, le=48_000)
+    duration_seconds: float = Field(gt=0, le=300)
+
+    @field_validator("audio_base64")
+    @classmethod
+    def validate_audio_base64(cls, value: str) -> str:
+        try:
+            audio = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ValueError("Audio must be valid base64 data.") from error
+        if not audio or len(audio) > 5_000_000:
+            raise ValueError("Audio must be between 1 byte and 5 MB.")
+        return value
 
 
 class UploadCompletionRequest(BaseModel):

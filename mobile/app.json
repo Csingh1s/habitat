@@ -9,6 +9,13 @@
     "userInterfaceStyle": "light",
     "plugins": [
       [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Habitat Inspector to record inspection voice notes.",
+          "enableBackgroundRecording": false
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow Habitat Inspector to capture inspection evidence."
@@ -21,7 +28,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-audio"
     ],
     "ios": {
       "supportsTablet": true,

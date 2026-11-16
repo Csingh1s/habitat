@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 from contextlib import asynccontextmanager
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from hashlib import sha256
+from secrets import compare_digest
 
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +27,7 @@ from .models import (
     CompletedUpload,
     ClientCreate,
     DevelopmentDemoInspectionResponse,
+    DevelopmentLoginRequest,
     MediaResponse,
     Principal,
     ProfileResponse,
@@ -32,6 +35,7 @@ from .models import (
     InspectionCreate,
     OnboardingRequest,
     PropertyCreate,
+    ShortTranscriptionRequest,
     UploadCompletionRequest,
     UploadIntentRequest,
     UploadIntentResponse,
@@ -47,6 +51,7 @@ from .settings import (
 from .supabase_adapters import SupabaseObjectStore, SupabaseRepository
 from .directory import router as directory_router
 from .reporting import router as reporting_router
+from .speech import AlibabaSpeechClient, SpeechTranscript
 from .worker import process_analysis
 
 
@@ -60,6 +65,7 @@ async def lifespan(app: FastAPI):
         app.state.repository = InMemoryRepository()
         app.state.object_store = InMemoryObjectStore(settings.development_upload_directory)
     app.state.inference_client = QwenInferenceClient(settings)
+    app.state.speech_client = AlibabaSpeechClient(settings)
     if settings.development_identity_enabled and isinstance(
         app.state.repository, InMemoryRepository
     ):
@@ -116,6 +122,66 @@ if cors_origins:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post(
+    "/v1/inspections/{inspection_id}/transcriptions",
+    response_model=SpeechTranscript,
+)
+def transcribe_inspection_note(
+    inspection_id: UUID,
+    payload: ShortTranscriptionRequest,
+    request: Request,
+    principal: Principal = Depends(get_principal),
+    repository: Repository = Depends(get_repository),
+) -> SpeechTranscript:
+    if not principal.roles & {"inspector", "admin", "owner"}:
+        raise HTTPException(status_code=403, detail="Your role cannot transcribe inspection notes.")
+    repository.get_inspection(principal, inspection_id)
+    client: AlibabaSpeechClient = request.app.state.speech_client
+    if not client.configured:
+        raise HTTPException(status_code=503, detail=client.unavailable_reason)
+    audio = base64.b64decode(payload.audio_base64, validate=True)
+    try:
+        return client.transcribe_short_audio(
+            audio,
+            audio_format=payload.audio_format,
+            sample_rate=payload.sample_rate,
+            duration_seconds=payload.duration_seconds,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Speech transcription is temporarily unavailable.") from error
+
+
+@app.post("/development/login")
+def development_login(payload: DevelopmentLoginRequest, response: Response) -> dict[str, str | bool]:
+    settings = get_settings()
+    if not settings.development_identity_enabled:
+        raise HTTPException(status_code=404, detail="Not found.")
+    response.headers["Cache-Control"] = "no-store"
+    submitted_email = payload.email.strip().casefold().encode()
+    submitted_password = payload.password.get_secret_value().encode()
+    admin_matches = compare_digest(
+        submitted_email, settings.development_admin_email.strip().casefold().encode()
+    ) and compare_digest(
+        submitted_password, settings.development_admin_password.get_secret_value().encode()
+    )
+    inspector_matches = compare_digest(
+        submitted_email, settings.development_login_email.strip().casefold().encode()
+    ) and compare_digest(
+        submitted_password, settings.development_login_password.get_secret_value().encode()
+    )
+    if not admin_matches and not inspector_matches:
+        raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+    return {
+        "authenticated": True,
+        "email": settings.development_admin_email.strip().casefold() if admin_matches else settings.development_login_email.strip().casefold(),
+        "tenant_id": DEVELOPMENT_DEMO_TENANT_ID,
+        "user_id": "demo-admin" if admin_matches else DEVELOPMENT_DEMO_USER_ID,
+        "role": "admin" if admin_matches else "inspector",
+    }
 
 
 @app.post("/v1/onboarding", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)

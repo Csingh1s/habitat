@@ -72,9 +72,13 @@ The client refuses to upload in deployed mode until a runtime user session and i
 present. It never uses the development headers outside development and never embeds a Supabase
 service-role key, Qwen/DashScope key, database password, or Azure secret.
 
-The current sign-in and registration screens are UI and client-side validation only. The next
-authentication milestone replaces their local transition with OIDC sign-in, server-side account
-creation, email verification, and tenant/profile provisioning.
+In local development mode, the mobile sign-in screen verifies the inspector and admin demo
+accounts against FastAPI's `/development/login` endpoint. The default local administrator is
+`admin@example.com` with password `HabitatAdmin12345`; change it through
+`DEVELOPMENT_ADMIN_EMAIL` and `DEVELOPMENT_ADMIN_PASSWORD` in the ignored API environment file.
+These accounts and role headers are disabled outside `APP_ENV=development`; they are not real
+customer accounts. Deployed sign-in continues through Microsoft Entra External ID, with account
+creation, email verification, and tenant provisioning handled as a separate production milestone.
 
 ## Microsoft Entra External ID
 

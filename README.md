@@ -1,12 +1,21 @@
-# Horizon Requirements Explorer
+# Habitat Inspection Workspace
 
-A **read-only** Python 3.12 tool for turning a manually shared, already authenticated
-Horizon browser session into structured UI evidence and a Markdown requirements report.
-It is designed for `discoverhorizon.com`, including the Schedule Day View:
+Home-inspection workspace for field capture, reviewer-approved findings, and PDF reports.
+This repository contains a FastAPI backend (`api/`), Expo mobile client (`mobile/`), React
+web workspace (`web/`), and Supabase migrations (`supabase/`). See each component README for
+setup and required services. Voice-note transcription is available in the mobile flow when
+the API is configured to call Alibaba Cloud; local development deliberately blocks paid AI.
+
+## Horizon Requirements Explorer
+
+This repository also retains the original **read-only** Python 3.12 utility for turning a
+manually shared, already authenticated Horizon browser session into structured UI evidence
+and a Markdown requirements report. It is designed for `discoverhorizon.com`, including the
+Schedule Day View:
 
 `https://www.discoverhorizon.com/authenticated/schedule/ScheduleDayViewX.aspx`
 
-## Safety model
+### Safety model
 
 - It never collects, asks for, writes, or persists usernames, passwords, cookies, tokens,
   or browser profiles.
@@ -22,7 +31,7 @@ It is designed for `discoverhorizon.com`, including the Schedule Day View:
 - Evidence is stored locally in the output directory. Review it before sharing because
   UI labels can contain sensitive operational or personal data.
 
-## Share an authenticated session
+### Share an authenticated session
 
 1. Open Chrome or Edge with a **separate, disposable browser profile** that you control.
    Sign in to Horizon yourself. Do not provide credentials to this tool.
@@ -42,7 +51,7 @@ It is designed for `discoverhorizon.com`, including the Schedule Day View:
 > If you are using the integrated browser instead, share the already authenticated tab with
 > the agent. The CLI connection method below is for your locally launched browser.
 
-## Install and run
+### Install and run
 
 ```powershell
 py -3.12 -m venv .venv

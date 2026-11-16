@@ -96,7 +96,7 @@ Homeowner signup, sharing, and Tarion submission remain outside these endpoints.
 - Direct-upload abstraction that returns a local development URL.
 - Upload completion guarded by checksum and an object-store head check.
 - Media validation job queue boundary.
-- Asynchronous Qwen2.5-VL review-candidate job contract and result polling.
+- Asynchronous Qwen review-candidate job contract and result polling.
 - Immutable-style audit-event recording.
 - Typed Pydantic contracts and tests.
 
@@ -162,7 +162,7 @@ directory, not model throughput or deployed PDF capacity.
 ## Qwen inference endpoint
 
 The self-hosted option uses a private OpenAI-compatible GPU endpoint serving
-`Qwen/Qwen2.5-VL-3B-Instruct`. An explicitly configured Qwen Cloud option is described below.
+`Qwen/Qwen2.5-VL-3B-Instruct`. Alibaba Cloud Model Studio is the default provider, described below.
 Neither downloads model weights into the API process. Set provider values only in a server
 secret manager or deployment configuration, never in source control:
 
@@ -170,30 +170,73 @@ The deployable vLLM service package is in [`../qwen-service/`](../qwen-service/)
 separate GPU workload with its own Runpod Pod configuration and secret boundary.
 
 ```text
+INFERENCE_PROVIDER=self_hosted
 QWEN_INFERENCE_URL=https://private-gpu.example/v1/chat/completions
 QWEN_INFERENCE_API_KEY=...
 QWEN_MODEL_ID=Qwen/Qwen2.5-VL-3B-Instruct
 QWEN_MODEL_VERSION=your-immutable-deployment-version
 ```
 
-### Qwen Cloud managed API
+### Alibaba Cloud Model Studio
 
-For lower-volume testing, the API can call Qwen Cloud's managed `qwen3.7-flash` vision model
-instead of a self-hosted GPU Pod. The current Qwen Cloud model page lists image input and
-structured outputs, with an OpenAI-compatible API endpoint in Singapore. Configure the deployed
-FastAPI service only:
+The selected provider is Alibaba Cloud Model Studio for both Qwen image analysis and speech
+recognition. No dedicated GPU rental is required. The default image model is `qwen3.7-flash`;
+model access and prices must be checked in the selected workspace before enabling paid calls.
+Cloud image requests disable thinking and cap output at 1,000 tokens.
+
+Copy the API Host from the [Model Studio key creation dialog](https://www.alibabacloud.com/help/en/model-studio/get-api-key).
+The host, key, and accessible models must belong to the same region and workspace. Do not
+guess a workspace ID or use a Coding Plan key. Configure the deployed FastAPI service only:
 
 ```text
 INFERENCE_PROVIDER=qwen_cloud
 DASHSCOPE_API_KEY=...
-QWEN_CLOUD_INFERENCE_URL=https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1/chat/completions
+ALIBABA_MODEL_STUDIO_HOST=https://YOUR_WORKSPACE_ID.ap-southeast-1.maas.aliyuncs.com
 QWEN_CLOUD_MODEL_ID=qwen3.7-flash
 QWEN_CLOUD_MODEL_VERSION=qwen-cloud-managed
+ALIBABA_SPEECH_MODEL_ID=qwen-audio-3.1-asr-flash
+ALIBABA_SPEECH_FILE_MODEL_ID=qwen-audio-3.1-asr-flash-filetrans
 ```
 
 `DASHSCOPE_API_KEY` is accepted as the provider's documented key name. It must be stored only
-in the server-side secret manager. The Qwen Cloud API key, like a self-hosted GPU key, must
+in the server-side secret manager. The Alibaba key, like a self-hosted GPU key, must
 never be included in the mobile app or source control.
+
+The image endpoint is derived as `<host>/compatible-mode/v1/chat/completions`.
+An explicit `QWEN_CLOUD_INFERENCE_URL` remains supported for existing deployments.
+No live Alibaba call or deployment has been verified by the mocked tests.
+
+### Alibaba speech adapter boundary
+
+[`src/habitat_api/speech.py`](src/habitat_api/speech.py) implements the documented native HTTP
+contracts, which are separate from image Chat Completions:
+
+- `POST /v1/inspections/{inspection_id}/transcriptions`: accepts an authenticated, authorized
+	mobile inspector's short recording, up to five minutes and 5 MB. The current mobile recorder
+	sends M4A at 44.1 kHz. FastAPI verifies inspection access and sends inline audio to Alibaba;
+	raw voice bytes are not persisted by this route.
+- The API returns transcript text with sentence timestamps when supplied by the provider and
+	`requires_human_review=true`. Mobile inserts it into the inspector context field for correction.
+	The text is sent with the photo when the inspector saves evidence; it does not itself create a
+	finding or approve a report.
+- `transcribe_short`: the provider adapter for recordings up to five minutes; returns the
+	accumulated text, not only the last sentence. It accepts actual file format, sample rate,
+	bytes, and verified duration.
+- `submit_file` / `get_task`: submit a longer recording and query its UUID without resubmitting
+	the billable job. Optional speaker diarization requires mono audio. Persist the provider
+	task ID before retries; this adapter does not provide durable submission idempotency.
+- `parse_file_transcript`: validates a downloaded result, preserving sentence timestamps in
+	milliseconds, channel IDs, and speaker IDs. Every transcript requires human review.
+
+This route is short-note dictation, not the longer recorded inspector conversation workflow.
+It does not retain audio, provide durable transcription jobs, attach transcript excerpts to
+multiple photos, or add transcript-specific report snapshots. Do not treat raw conversation
+text as a diagnosed finding. Task result URLs for the longer-file adapter remain untrusted;
+the adapter returns them but does not download them.
+
+References: [short-recording HTTP API](https://www.alibabacloud.com/help/en/model-studio/qwen-audio-asr-http-api),
+[file-transcription HTTP API](https://www.alibabacloud.com/help/en/model-studio/qwen-audio-asr-filetrans-http-api).
+The Qwen-Audio 3.1 models bill by token usage; do not apply Azure or Google per-minute prices.
 
 Unpaid/free API quota is for public, synthetic, or non-sensitive test evidence only. Before
 using authorized client evidence, use the paid API and complete the required data-processing,
@@ -201,7 +244,7 @@ data-region, retention, and consent review.
 
 ### Cost guard: local development never calls the model
 
-The API fails closed by default. `APP_ENV=development` blocks remote Qwen requests even when
+The API fails closed by default. `APP_ENV=development` blocks remote Qwen and speech requests even when
 an endpoint URL and key happen to exist in the local environment. This lets engineers run,
 test, and debug FastAPI from VS Code without starting or billing a GPU Pod.
 
@@ -211,8 +254,9 @@ service:
 ```text
 APP_ENV=staging or APP_ENV=production
 ENABLE_REMOTE_INFERENCE=true
-QWEN_INFERENCE_URL=https://private-gpu.example/v1/chat/completions
-QWEN_INFERENCE_API_KEY=...
+INFERENCE_PROVIDER=qwen_cloud
+ALIBABA_MODEL_STUDIO_HOST=https://YOUR_WORKSPACE_ID.ap-southeast-1.maas.aliyuncs.com
+DASHSCOPE_API_KEY=...
 ```
 
 `ENABLE_REMOTE_INFERENCE` defaults to `false`; deployed environments remain model-disabled

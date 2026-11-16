@@ -1,7 +1,15 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Crypto from 'expo-crypto';
+import { File } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -15,6 +23,7 @@ import {
   Text,
   TextInput,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import {
   configureAuthenticatedApiSession,
@@ -26,7 +35,9 @@ import {
   type Inspection,
   onboardWorkspace,
   selectInspectionForCapture,
+  signInDevelopmentAccount,
   submitEvidenceForAnalysis,
+  transcribeVoiceNote,
 } from './src/api/habitatApi';
 import { useEntraAuthentication } from './src/auth/entra';
 
@@ -86,6 +97,12 @@ const regionsByCountry = {
 } as const;
 
 const DEMO_SESSION_KEY = 'habitat-demo-workspace';
+const MAX_VOICE_NOTE_SECONDS = 300;
+
+function formatRecordingDuration(durationMillis: number): string {
+  const totalSeconds = Math.floor(durationMillis / 1000);
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
 
 function supportedContentType(
   value: string | null | undefined,
@@ -108,6 +125,138 @@ function supportedContentType(
   return null;
 }
 
+type VoiceNoteComposerProps = {
+  value: string;
+  onChangeText: (value: string) => void;
+  disabled: boolean;
+  hasInspection: boolean;
+};
+
+function VoiceNoteComposer({ value, onChangeText, disabled, hasInspection }: VoiceNoteComposerProps) {
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const audioRecorderState = useAudioRecorderState(audioRecorder);
+  const [voiceNoteState, setVoiceNoteState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
+  const [voiceNoteError, setVoiceNoteError] = useState<string | null>(null);
+  const voiceLimitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceFinalizing = useRef(false);
+
+  useEffect(() => () => {
+    if (voiceLimitTimer.current) clearTimeout(voiceLimitTimer.current);
+  }, []);
+
+  async function finishVoiceNote() {
+    if (voiceFinalizing.current) return;
+    voiceFinalizing.current = true;
+    setVoiceNoteState('transcribing');
+    setVoiceNoteError(null);
+    if (voiceLimitTimer.current) clearTimeout(voiceLimitTimer.current);
+    let recordingUri: string | null = audioRecorder.uri;
+    try {
+      await audioRecorder.stop();
+      recordingUri = audioRecorder.uri ?? recordingUri;
+      const durationSeconds = audioRecorder.getStatus().durationMillis / 1000;
+      if (!recordingUri) throw new Error('The recording could not be read. Please record the note again.');
+      const transcript = await transcribeVoiceNote(recordingUri, durationSeconds);
+      const currentNote = value.trim();
+      const combinedNote = currentNote ? `${currentNote}\n${transcript.text}` : transcript.text;
+      if (combinedNote.length > 1000) {
+        throw new Error('The transcript is too long for this note. Shorten the existing note and try again.');
+      }
+      onChangeText(combinedNote);
+    } catch (error) {
+      setVoiceNoteError(error instanceof Error ? error.message : 'Transcription failed. Please try again.');
+    } finally {
+      if (recordingUri) {
+        try {
+          new File(recordingUri).delete();
+        } catch {
+          setVoiceNoteError((current) => current ?? 'Temporary audio could not be removed from this device.');
+        }
+      }
+      await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+      setVoiceNoteState('idle');
+      voiceFinalizing.current = false;
+    }
+  }
+
+  async function toggleVoiceNote() {
+    if (voiceNoteState === 'recording') {
+      await finishVoiceNote();
+      return;
+    }
+    if (voiceNoteState !== 'idle' || disabled) return;
+    if (!hasInspection) {
+      setVoiceNoteError('Select an inspection before recording a voice note.');
+      return;
+    }
+    try {
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setVoiceNoteError('Microphone access is required to record a voice note.');
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record({ forDuration: MAX_VOICE_NOTE_SECONDS });
+      setVoiceNoteError(null);
+      setVoiceNoteState('recording');
+      voiceLimitTimer.current = setTimeout(() => { void finishVoiceNote(); }, MAX_VOICE_NOTE_SECONDS * 1000);
+    } catch (error) {
+      setVoiceNoteError(error instanceof Error ? error.message : 'The microphone could not start.');
+      await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+    }
+  }
+
+  return (
+    <>
+      <View style={styles.noteComposer}>
+        <TextInput
+          value={value}
+          maxLength={1000}
+          editable={!disabled && voiceNoteState === 'idle'}
+          onChangeText={onChangeText}
+          placeholder="Add a note or dictate an observation..."
+          placeholderTextColor="#87958F"
+          multiline
+          style={styles.noteInput}
+          textAlignVertical="top"
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={voiceNoteState === 'recording' ? 'Stop recording and transcribe' : 'Start voice recording'}
+          accessibilityHint={Platform.OS === 'web' ? 'Voice recording is available in the Android or iOS app.' : 'Records up to five minutes and inserts the transcript into this editable note.'}
+          accessibilityState={{ disabled: Platform.OS === 'web' || disabled || voiceNoteState === 'transcribing' || !hasInspection }}
+          disabled={Platform.OS === 'web' || disabled || voiceNoteState === 'transcribing' || !hasInspection}
+          onPress={() => { void toggleVoiceNote(); }}
+          style={[styles.voiceButton, voiceNoteState === 'recording' && styles.voiceButtonRecording, voiceNoteState === 'transcribing' && styles.voiceButtonBusy, Platform.OS === 'web' && styles.voiceButtonWeb]}
+        >
+          {voiceNoteState === 'transcribing' ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.voiceButtonIcon}>{voiceNoteState === 'recording' ? '■' : '🎙'}</Text>
+          )}
+        </Pressable>
+      </View>
+      {Platform.OS === 'web' ? (
+        <Text style={styles.voiceWebNotice}>Recording is available in the Android or iOS app.</Text>
+      ) : (
+        <Text style={styles.voicePrivacyNote}>
+          {process.env.EXPO_PUBLIC_HABITAT_API_MODE === 'development'
+            ? 'Local development blocks speech AI. Transcription needs a provider-enabled API.'
+            : 'Voice is sent to Alibaba for transcription. Review the text before saving.'}
+        </Text>
+      )}
+      {Platform.OS !== 'web' && voiceNoteState === 'recording' ? (
+        <Text style={styles.voiceStatus}>Recording voice note · {formatRecordingDuration(audioRecorderState.durationMillis)} / 5:00</Text>
+      ) : null}
+      {Platform.OS !== 'web' && voiceNoteState === 'transcribing' ? (
+        <Text style={styles.voiceStatus}>Transcribing. Your audio is removed from this device after the request.</Text>
+      ) : null}
+      {voiceNoteError ? <Text accessibilityRole="alert" style={styles.voiceError}>{voiceNoteError}</Text> : null}
+    </>
+  );
+}
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthenticationReady, setIsAuthenticationReady] = useState(false);
@@ -115,8 +264,9 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>('signIn');
   const [companyName, setCompanyName] = useState('');
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(process.env.EXPO_PUBLIC_HABITAT_API_MODE === 'development' ? 'admin@example.com' : '');
   const [password, setPassword] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [country, setCountry] = useState<keyof typeof regionsByCountry>('United States');
   const [region, setRegion] = useState('');
   const [regionSearch, setRegionSearch] = useState('');
@@ -267,25 +417,34 @@ export default function App() {
     setShowRegionChoices(false);
   }
 
-  function submitAuthentication() {
+  async function submitAuthentication() {
     if (process.env.EXPO_PUBLIC_HABITAT_API_MODE === 'deployed') {
       if (authMode === 'register' && (!companyName.trim() || !fullName.trim() || !region)) {
         Alert.alert('Complete your profile', 'Add your company name, full name, and location before continuing.');
         return;
       }
-      void entra.signIn();
+      await entra.signIn();
+      return;
+    }
+    if (process.env.EXPO_PUBLIC_HABITAT_API_MODE !== 'development') {
+      setAuthStorageNotice('Account sign-in is not configured for this build.');
       return;
     }
     const emailLooksValid = /^\S+@\S+\.\S+$/.test(email);
-    if (!emailLooksValid || password.length < 8) {
-      Alert.alert('Check your sign-in details', 'Enter a valid email address and a password with at least 8 characters.');
+    if (!emailLooksValid || password.length < 1) {
+      setAuthStorageNotice('Enter the local account email and password.');
       return;
     }
-    if (authMode === 'register' && (!companyName.trim() || !fullName.trim() || !region)) {
-      Alert.alert('Complete your profile', 'Add your company name, full name, and location before continuing.');
-      return;
+    setIsSigningIn(true);
+    setAuthStorageNotice(null);
+    try {
+      await signInDevelopmentAccount(email, password);
+      setIsAuthenticated(true);
+    } catch (error) {
+      setAuthStorageNotice(error instanceof Error ? error.message : 'Local sign-in failed.');
+    } finally {
+      setIsSigningIn(false);
     }
-    setIsAuthenticated(true);
   }
 
   async function enterDemoWorkspace() {
@@ -365,11 +524,11 @@ export default function App() {
               </View>
             ) : null}
 
-            <Pressable style={styles.authPrimaryButton} onPress={submitAuthentication}>
-              <Text style={styles.authPrimaryButtonText}>{isRegistering ? 'Create workspace' : 'Sign in'}</Text>
+            <Pressable style={styles.authPrimaryButton} onPress={() => void submitAuthentication()} disabled={isSigningIn}>
+              <Text style={styles.authPrimaryButtonText}>{isSigningIn ? 'Signing in...' : isRegistering ? 'Create workspace' : 'Sign in'}</Text>
               <Text style={styles.authPrimaryArrow}>→</Text>
             </Pressable>
-            {!isRegistering ? <Text style={styles.authHelpText}>Sign-in is secured through your organization’s Microsoft identity provider.</Text> : null}
+            {!isRegistering ? <Text style={styles.authHelpText}>{process.env.EXPO_PUBLIC_HABITAT_API_MODE === 'development' ? 'Local development account. Microsoft sign-in remains available in deployed builds.' : 'Sign-in is secured through your organization’s Microsoft identity provider.'}</Text> : null}
             {entra.errorMessage ? <Text style={styles.authStorageNotice}>{entra.errorMessage}</Text> : null}
             <View style={styles.authDemoDivider}><View style={styles.authDemoLine} /><Text style={styles.authDemoDividerText}>DEVELOPMENT</Text><View style={styles.authDemoLine} /></View>
             <Pressable style={styles.authDemoButton} onPress={enterDemoWorkspace}>
@@ -379,12 +538,12 @@ export default function App() {
             {authStorageNotice ? <Text style={styles.authStorageNotice}>{authStorageNotice}</Text> : null}
           </View>
 
-          <View style={styles.authSwitchRow}>
+          {process.env.EXPO_PUBLIC_HABITAT_API_MODE === 'deployed' ? <View style={styles.authSwitchRow}>
             <Text style={styles.authSwitchText}>{isRegistering ? 'Already have a workspace?' : 'New to Habitat?'}</Text>
             <Pressable onPress={() => { setAuthMode(isRegistering ? 'signIn' : 'register'); setShowRegionChoices(false); }}>
               <Text style={styles.authSwitchAction}>{isRegistering ? 'Sign in' : 'Create one'}</Text>
             </Pressable>
-          </View>
+          </View> : null}
           <View style={styles.authSecurityRow}>
             <Text style={styles.authSecurityIcon}>✓</Text>
             <Text style={styles.authSecurityText}>Evidence stays private and every AI suggestion requires human review.</Text>
@@ -646,16 +805,11 @@ export default function App() {
             </View>
             <Text style={styles.requiredText}>REQUIRED</Text>
           </View>
-          <TextInput
+          <VoiceNoteComposer
             value={note}
-            maxLength={1000}
-            editable={!processing && !analysisJob}
             onChangeText={setNote}
-            placeholder="Add a note or dictate an observation..."
-            placeholderTextColor="#87958F"
-            multiline
-            style={styles.noteInput}
-            textAlignVertical="top"
+            disabled={processing || Boolean(analysisJob)}
+            hasInspection={Boolean(selectedInspection)}
           />
         </View>
 
@@ -971,7 +1125,17 @@ const styles = StyleSheet.create({
   cardLabel: { color: '#648177', fontSize: 10, letterSpacing: 1, fontWeight: '800' },
   reviewCardTitle: { color: '#18312A', fontSize: 14, fontWeight: '700', marginTop: 5 },
   requiredText: { color: '#9A681A', fontSize: 10, fontWeight: '800', letterSpacing: 0.6, backgroundColor: '#FFF6E7', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 5 },
-  noteInput: { color: '#18312A', minHeight: 88, fontSize: 13, lineHeight: 19, marginTop: 12, borderTopWidth: 1, borderTopColor: '#E4ECE7', paddingTop: 11 },
+  noteComposer: { position: 'relative', minHeight: 106, marginTop: 12, borderTopWidth: 1, borderTopColor: '#E4ECE7', borderRadius: 10, backgroundColor: '#F7FAF8', overflow: 'hidden' },
+  noteInput: { color: '#18312A', minHeight: 106, fontSize: 13, lineHeight: 19, paddingHorizontal: 12, paddingTop: 11, paddingBottom: 52 },
+  voiceButton: { position: 'absolute', right: 9, bottom: 9, width: 38, height: 38, borderRadius: 19, backgroundColor: '#0F5D4E', alignItems: 'center', justifyContent: 'center' },
+  voiceButtonRecording: { backgroundColor: '#B83D35' },
+  voiceButtonBusy: { backgroundColor: '#70877D' },
+  voiceButtonWeb: { backgroundColor: '#70877D' },
+  voiceButtonIcon: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  voiceWebNotice: { position: 'absolute', right: 10, bottom: 12, color: '#74837C', fontSize: 10 },
+  voicePrivacyNote: { color: '#74837C', fontSize: 10, lineHeight: 15, marginTop: -7, marginBottom: 12 },
+  voiceStatus: { color: '#527066', fontSize: 11, lineHeight: 16, marginTop: -7, marginBottom: 12 },
+  voiceError: { color: '#A1362F', fontSize: 11, lineHeight: 16, marginTop: -7, marginBottom: 12 },
   reviewBadge: { backgroundColor: '#E8F5F0', paddingHorizontal: 7, paddingVertical: 5, borderRadius: 6 },
   reviewBadgeText: { color: '#0F6A54', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   reviewBody: { color: '#4F655C', fontSize: 12, lineHeight: 18, marginTop: 12 },

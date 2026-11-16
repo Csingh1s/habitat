@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowRight, ArrowUpRight, Building2, CalendarDays, Check, CheckCircle2, ChevronRight, ClipboardList, Copy, House, ImagePlus, Images, LoaderCircle, MapPin, Plus, RefreshCw, Search, Users, X } from 'lucide-react'
+import { ArrowDown, ArrowRight, Building2, CalendarDays, Check, CheckCircle2, ChevronRight, ClipboardList, Copy, House, ImagePlus, Images, LoaderCircle, LogIn, LogOut, MapPin, Plus, RefreshCw, Search, Users, X } from 'lucide-react'
 import { address, list, request, uploadPhoto } from './api'
 import type { Client, Inspection, Media, Property } from './api'
 import RecordDialog from './RecordDialog'
@@ -18,7 +18,7 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : '
 const readable = (value: string) => value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase())
 const date = (value: string | null) => value ? new Date(value).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not scheduled'
 
-function App() {
+function App({ onDevelopmentSignOut }: { onDevelopmentSignOut?: () => void }) {
   const [view, setView] = useState<View>('inspections')
   const [storedRows, setRows] = useState<Row[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -162,15 +162,14 @@ function App() {
   const PageIcon = icons[view]
 
   return <div className="app-shell">
-    <aside className="sidebar">
+    <header className="workspace-nav">
       <a href="/" className="brand" aria-label="Habitat home"><span className="brand-mark"><House size={24} /></span><span>habitat<span className="brand-sub">INSPECTION WORKSPACE</span></span></a>
-      <div className="workspace-label">WORKSPACE</div>
-      <nav aria-label="Workspace navigation">{(Object.keys(titles) as View[]).map((item) => { const Icon = icons[item]; return <button key={item} aria-current={view === item ? 'page' : undefined} onClick={() => navigate(item)}><Icon size={19} /><span>{titles[item]}</span>{view === item && <ChevronRight size={15} />}</button> })}</nav>
-      <div className="sidebar-bottom"><span className="environment"><span className={connected ? 'connection-dot connected' : 'connection-dot'} />{import.meta.env.DEV ? 'Local development' : 'Authenticated workspace'}</span>{import.meta.env.DEV ? <a href="http://127.0.0.1:8001/docs" target="_blank" rel="noreferrer">API reference<ArrowUpRight size={15} /></a> : <div className="auth-actions"><button className="text-button" onClick={() => void signIn().then(() => setRevision((value) => value + 1)).catch((failure) => setError(errorText(failure)))}>Sign in again</button><button className="text-button" onClick={() => void signOut().catch((failure) => setError(errorText(failure)))}>Sign out</button></div>}<div className="workspace-account"><span className="avatar">IW</span><div><strong>{import.meta.env.DEV ? 'Development inspector' : 'Inspector'}</strong><small>Inspection workspace</small></div></div></div>
-    </aside>
+      <nav aria-label="Workspace navigation">{(Object.keys(titles) as View[]).map((item) => { const Icon = icons[item]; return <button key={item} aria-current={view === item ? 'page' : undefined} onClick={() => navigate(item)}><Icon size={18} /><span>{titles[item]}</span></button> })}</nav>
+      <div className="nav-account"><span className="avatar" aria-hidden="true">IW</span><span className="account-label"><strong>Inspector workspace</strong><small>{import.meta.env.DEV ? 'Development' : 'Company account'}</small></span>{import.meta.env.DEV ? <button className="nav-signin" type="button" onClick={onDevelopmentSignOut}><LogOut size={16} />Sign out</button> : <div className="auth-actions"><button className="icon-button" title="Renew sign-in" aria-label="Renew sign-in" onClick={() => void signIn().then(() => setRevision((value) => value + 1)).catch((failure) => setError(errorText(failure)))}><LogIn size={18} /></button><button className="icon-button" title="Sign out" aria-label="Sign out" onClick={() => void signOut().catch((failure) => setError(errorText(failure)))}><LogOut size={18} /></button></div>}</div>
+    </header>
     <div className="main-shell">
       <header className="topbar"><div className="breadcrumb">Workspace<ChevronRight size={14} /><strong>{titles[view]}</strong></div><div className="topbar-status"><span className={connected ? 'connection-dot connected' : 'connection-dot'} />{connected ? 'API connected' : 'API unavailable'}<span className="local-label">{import.meta.env.DEV ? 'LOCAL' : 'DEPLOYED'}</span></div></header>
-      <main>
+      <main className="workspace-content">
         <div className="page-heading"><div><div className="eyebrow">FIELD OPERATIONS</div><h1>{titles[view]}</h1><p>{today}</p></div><div className="heading-actions"><button className="icon-button" title="Refresh records" aria-label="Refresh records" disabled={loading} onClick={() => { setRevision((value) => value + 1); setDetailRevision((value) => value + 1) }}><RefreshCw size={18} className={loading ? 'spinning' : ''} /></button><button className="primary-button" onClick={() => setDialog(view)}><Plus size={18} />New {view === 'properties' ? 'property' : view === 'clients' ? 'client' : 'inspection'}</button></div></div>
         {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => setRevision((value) => value + 1)}>Retry</button></div>}
         <div className="directory-layout">
@@ -186,7 +185,7 @@ function App() {
             </div>
             <div className="table-footer"><span>{shownRows.length} {shownRows.length === 1 ? 'record' : 'records'} shown</span>{hasMore && <button className="text-button" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? <LoaderCircle size={15} className="spinning" /> : <ArrowDown size={15} />}Load more</button>}</div>
           </section>
-          {view === 'inspections' && <aside className="inspection-panel" aria-label="Inspection details"><div className="panel-heading"><span>INSPECTION DETAILS</span>{selectedId && <button className="icon-button small" aria-label="Close inspection details" title="Close inspection details" disabled={uploading} onClick={() => setSelectedId(null)}><X size={17} /></button>}</div>
+          {view === 'inspections' && selectedId && <aside className="inspection-panel" aria-label="Inspection details"><div className="panel-heading"><span>INSPECTION DETAILS</span>{selectedId && <button className="icon-button small" aria-label="Close inspection details" title="Close inspection details" disabled={uploading} onClick={() => setSelectedId(null)}><X size={17} /></button>}</div>
             {detailLoading ? <div className="empty-state"><LoaderCircle size={25} className="spinning" /><h3>Loading inspection</h3></div> : detail ? <>
               <div className="inspection-address"><span className={`status-badge ${detail.inspection.status}`}>{readable(detail.inspection.status)}</span><h2>{detail.inspection.property_address}</h2><div className="detail-client"><Users size={16} /><span>{detail.client?.full_name ?? 'No client linked'}</span></div><div className="detail-client"><CalendarDays size={16} /><span>{date(detail.inspection.scheduled_for)}</span></div><button className="id-button" title="Copy inspection UUID" onClick={() => void copy(detail.inspection.id)}>#{detail.inspection.id.slice(0, 8)}<Copy size={13} /></button></div>
               <div className="evidence-heading"><h3>Photo evidence <span>{detail.media.length}{mediaHasMore ? '+' : ''}</span></h3><Images size={17} /></div>

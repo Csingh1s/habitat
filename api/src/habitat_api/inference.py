@@ -16,7 +16,10 @@ class QwenInferenceClient:
         self._remote_inference_allowed = settings.remote_inference_allowed
         self.provider = settings.inference_provider
         if self.provider == "qwen_cloud":
-            self._endpoint = settings.qwen_cloud_inference_url
+            self._endpoint = settings.qwen_cloud_inference_url or (
+                f"{settings.alibaba_model_studio_host.rstrip('/')}/compatible-mode/v1/chat/completions"
+                if settings.alibaba_model_studio_host else None
+            )
             self._api_key = settings.qwen_cloud_api_key
             self.model_id = settings.qwen_cloud_model_id
             self.model_version = settings.qwen_cloud_model_version
@@ -40,7 +43,7 @@ class QwenInferenceClient:
             )
         if self.provider == "qwen_cloud":
             return (
-                "Qwen Cloud inference is not configured. Set DASHSCOPE_API_KEY "
+                "Alibaba Cloud Qwen inference is not configured. Set ALIBABA_MODEL_STUDIO_HOST and DASHSCOPE_API_KEY "
                 "in the deployed API service."
             )
         return "Qwen inference is not configured. Set QWEN_INFERENCE_URL and QWEN_INFERENCE_API_KEY in the deployed API service."
@@ -89,6 +92,9 @@ class QwenInferenceClient:
             "temperature": 0,
             "response_format": {"type": "json_object"},
         }
+        if self.provider == "qwen_cloud":
+            body["enable_thinking"] = False
+            body["max_tokens"] = 1000
         http_request = Request(
             self._endpoint,
             data=json.dumps(body).encode(),

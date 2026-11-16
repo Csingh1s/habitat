@@ -88,11 +88,29 @@ export type CapturedEvidence = {
   inspectorNote?: string;
 };
 
+export type VoiceTranscript = {
+  text: string;
+  model_id: string;
+  requires_human_review: true;
+};
+
 type ApiMode = 'development' | 'deployed';
 
 type AuthenticatedApiSession = {
   accessToken: string;
   inspectionId: string;
+};
+
+type DevelopmentApiIdentity = {
+  tenantId: string;
+  userId: string;
+  role: 'admin' | 'inspector';
+};
+
+let developmentIdentity: DevelopmentApiIdentity = {
+  tenantId: 'demo-tenant',
+  userId: 'demo-inspector',
+  role: 'inspector',
 };
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_HABITAT_API_BASE_URL?.replace(/\/$/, '');
@@ -113,6 +131,48 @@ export class HabitatApiError extends Error {
 export function configureAuthenticatedApiSession(session: AuthenticatedApiSession | null): void {
   authenticatedSession = session;
   selectedInspectionId = session?.inspectionId || null;
+}
+
+export async function signInDevelopmentAccount(email: string, password: string): Promise<void> {
+  if (!__DEV__ || apiMode !== 'development') {
+    throw new HabitatApiError('Local accounts are available only in the development build.');
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let response: Response;
+  try {
+    response = await fetch(`${requireApiBaseUrl()}/development/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+      signal: controller.signal,
+    });
+  } catch {
+    throw new HabitatApiError('Could not reach the API. Check the emulator API address and that FastAPI is running.');
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new HabitatApiError(typeof payload?.detail === 'string' ? payload.detail : 'Local sign-in failed.', response.status);
+  }
+  const identity = await response.json() as {
+    authenticated?: boolean;
+    tenant_id?: string;
+    user_id?: string;
+    role?: string;
+  };
+  if (
+    identity.authenticated !== true || !identity.tenant_id || !identity.user_id
+    || (identity.role !== 'admin' && identity.role !== 'inspector')
+  ) {
+    throw new HabitatApiError('The API returned an invalid local account identity.');
+  }
+  developmentIdentity = {
+    tenantId: identity.tenant_id,
+    userId: identity.user_id,
+    role: identity.role,
+  };
 }
 
 export function selectInspectionForCapture(inspectionId: string): void {
@@ -145,11 +205,42 @@ export async function fetchAssignedInspections(accessToken?: string, after?: str
   return request<Inspection[]>(`/v1/inspections?limit=50${after ? `&after=${encodeURIComponent(after)}` : ''}`);
 }
 
+export async function transcribeVoiceNote(uri: string, durationSeconds: number): Promise<VoiceTranscript> {
+  if (Platform.OS === 'web') {
+    throw new HabitatApiError('Voice recording is available in the Android and iOS mobile app.');
+  }
+  if (!selectedInspectionId) {
+    throw new HabitatApiError('Select an inspection before recording a voice note.');
+  }
+  const audioFile = new File(uri);
+  if (!audioFile.exists || audioFile.size <= 0 || audioFile.size > 5_000_000) {
+    throw new HabitatApiError('Recording must be non-empty and no larger than 5 MB. Record a shorter note and try again.');
+  }
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 300) {
+    throw new HabitatApiError('Voice notes must be between 1 second and 5 minutes.');
+  }
+  const audioFormat = audioFile.extension.replace(/^\./, '').toLowerCase();
+  if (audioFormat !== 'm4a') {
+    throw new HabitatApiError('This recording format is not supported. Record the note again on this device.');
+  }
+  const audioBase64 = await audioFile.base64();
+  return request<VoiceTranscript>(`/v1/inspections/${selectedInspectionId}/transcriptions`, {
+    method: 'POST',
+    body: JSON.stringify({
+      audio_base64: audioBase64,
+      audio_format: audioFormat,
+      sample_rate: 44100,
+      duration_seconds: durationSeconds,
+    }),
+  });
+}
+
 function requestHeaders(): Record<string, string> {
   if (apiMode === 'development') {
     return {
-      'X-Dev-Tenant-Id': 'demo-tenant',
-      'X-Dev-User-Id': 'demo-inspector',
+      'X-Dev-Tenant-Id': developmentIdentity.tenantId,
+      'X-Dev-User-Id': developmentIdentity.userId,
+      'X-Dev-Roles': developmentIdentity.role,
     };
   }
 
