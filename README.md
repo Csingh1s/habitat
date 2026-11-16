@@ -1,5 +1,7 @@
 # Habitat Inspection Workspace
 
+Home inspection software.
+
 Home-inspection workspace for field capture, reviewer-approved findings, and PDF reports.
 This repository contains a FastAPI backend (`api/`), Expo mobile client (`mobile/`), React
 web workspace (`web/`), and Supabase migrations (`supabase/`). See each component README for
